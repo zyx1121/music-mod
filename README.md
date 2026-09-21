@@ -52,7 +52,7 @@ One line, left to right:
 |------|---------|
 | `▶️` `⏸️` `⏩` `⏪` | The player state. Click it to play or pause. |
 | Title | track · artist · album, cut with an ellipsis when the band is narrow |
-| Bar | 20 cells of progress (fewer on a narrow band), then position / duration |
+| Bar | Progress, stretched to fill whatever width the title leaves (6 cells at the least), then position / duration |
 | `⏭️` | Click it to skip to the next track. |
 
 When Music.app is closed or stopped the band says so instead. When `osascript` fails (not authorized, timed out), the band shows the reason and keeps polling. A survey that takes the band is yielded to.
@@ -74,7 +74,7 @@ Set it as any plugin `userConfig` field: `/config`, or `music-mod.refreshMs` in 
 
 ```
 bunx -p typescript tsc -p tsconfig.json          # typecheck
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 16 tests, the engine's own harness
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 17 tests, the engine's own harness
 ```
 
 The API these mods are written against may change between releases without notice. When it does, refresh `types/claude-code.d.ts` from upstream and let the typecheck point at what moved.

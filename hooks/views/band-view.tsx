@@ -11,10 +11,7 @@ export type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 /** What a press on each control runs. */
 export type Actions = Record<Control, () => void>
 
-/** The progress bar's cells on a band wide enough to spare them. */
-export const BAR_CELLS = 20
-
-/** Below this many cells the bar stops shrinking and the title gives way. */
+/** The fewest cells the bar keeps; below that the title gives way. */
 export const BAR_MIN_CELLS = 6
 
 /** The state glyph, a pressable play/pause. */
@@ -34,19 +31,47 @@ export const NEXT_MARK = '⏭️'
 const GLYPH_CELLS = 2
 
 /**
- * `text` cut to `cells` columns with an ellipsis, counting a CJK or emoji
- * character as two cells.
+ * Cells the engine draws its collapse mark (` [-]`) over at the band's right
+ * edge; `bodyColumns` does not set them aside, so the line stops short of them.
+ */
+export const COLLAPSE_CELLS = 4
+
+const WIDE =
+  /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1FAFF}]/u
+
+/**
+ * The columns `text` takes on the terminal, a CJK or emoji character two.
+ *
+ * @param text the string
+ * @returns its cells
+ */
+export function widthOf(text: string): number {
+  let width = 0
+
+  for (const char of text) {
+    width += WIDE.test(char) ? 2 : 1
+  }
+
+  return width
+}
+
+/**
+ * `text` cut to `cells` columns with an ellipsis when it does not fit.
  *
  * @param text the string
  * @param cells the columns to fit
  * @returns the fitted string
  */
 export function fitOf(text: string, cells: number): string {
+  if (widthOf(text) <= cells) {
+    return text
+  }
+
   let width = 0
   let out = ''
 
   for (const char of text) {
-    const w = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1F300}-\u{1FAFF}]/u.test(char) ? 2 : 1
+    const w = WIDE.test(char) ? 2 : 1
 
     if (width + w > cells - 1) {
       return `${out}…`
@@ -60,8 +85,8 @@ export function fitOf(text: string, cells: number): string {
 }
 
 /**
- * The band's tree for one `ui.render`: one line above the prompt, its two
- * glyphs pressable.
+ * The band's tree for one `ui.render`: one line above the prompt filling its
+ * width (the bar takes what the title leaves), its two glyphs pressable.
  *
  * @param kit Box, Text and Button
  * @param model what was last read
@@ -116,11 +141,12 @@ export function bandView(kit: Kit, model: Model, columns: number, actions: Actio
   const position = now.position ?? 0
   const clocks = `${clockOf(position)} / ${clockOf(track.duration)}`
   const title = [track.name, track.artist, track.album].filter(part => part !== '').join(' · ')
-  const fixed = 2 + GLYPH_CELLS + 1 + 2 + 1 + clocks.length + 1 + GLYPH_CELLS
-  const spare = columns - fixed
-  const cells = Math.max(BAR_MIN_CELLS, Math.min(BAR_CELLS, Math.floor(spare / 3)))
+  const fixed = 2 + GLYPH_CELLS + 1 + 1 + 1 + clocks.length + 1 + GLYPH_CELLS
+  const spare = Math.max(BAR_MIN_CELLS + 4, columns - COLLAPSE_CELLS - fixed)
+  const isWhole = widthOf(title) + BAR_MIN_CELLS <= spare
+  const titleCells = isWhole ? widthOf(title) : spare - BAR_MIN_CELLS
+  const cells = spare - titleCells
   const bar = barOf(track.duration > 0 ? position / track.duration : 0, cells)
-  const titleCells = Math.max(4, spare - cells)
 
   return (
     <Box paddingX={1} flexDirection="row" gap={1}>
