@@ -5,17 +5,18 @@ import * as Fixtures from './fixtures'
 tier('user')
 
 describe('register', () => {
-  test('an interactive start shows the line without /music', async ($, on) => {
+  test('an interactive start shows the line without /music, what is beneath below it', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
 
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND)).split('\n')[1]).toBe('(beneath)')
+
     expect(world.runs.length, 'the start reads once').toBe(1)
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
 
-    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
+    const drawn = Fixtures.lineOf(await $.ui.render(Fixtures.BAND))
 
-    expect(drawn).not.toContain('\n')
     expect(drawn).toMatch(/^▶️ FOREVER · BABYMONSTER · FOREVER - Single █+░+ 3:17 \/ 3:33 ⏭️$/)
     expect(drawn).not.toContain('53')
     expect(drawn).not.toContain('409')
@@ -28,11 +29,11 @@ describe('register', () => {
     await $.session.start(Fixtures.SESSION)
 
     expect(world.runs, 'nothing read while hidden').toEqual([])
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music shown above the prompt' })
     expect(world.stored.shown).toBe(true)
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶️ FOREVER/)
   })
 
   test('a non-interactive start shows nothing', async ($, on) => {
@@ -41,7 +42,7 @@ describe('register', () => {
     await $.session.start({ ...Fixtures.SESSION, isInteractive: false })
 
     expect(world.runs).toEqual([])
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
   })
 
   test('pressing the state glyph toggles play/pause, then re-reads', async ($, on) => {
@@ -77,7 +78,7 @@ describe('register', () => {
 
     await $.session.start(Fixtures.SESSION)
 
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
   })
 
   test('while shown, the band re-reads on the timer and redraws', async ($, on) => {
@@ -92,7 +93,7 @@ describe('register', () => {
 
     expect(world.runs.length).toBe(2)
     expect(world.invalidated).toEqual(['ui.render', 'ui.render'])
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
   })
 
   test('/music on a shown band hides it, stops the timer and remembers', async ($, on) => {
@@ -102,7 +103,7 @@ describe('register', () => {
 
     expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music hidden' })
     expect(world.stored.shown).toBe(false)
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     await world.clock.advance(10000)
 
@@ -116,7 +117,7 @@ describe('register', () => {
 
     const survey = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, hasSurvey: true } }
 
-    expect(Fixtures.textOf(await $.ui.render(survey))).toBe('(beneath)')
+    expect(Fixtures.lineOf(await $.ui.render(survey))).toBe('(beneath)')
   })
 
   test('the session ending stops the timer too', async ($, on) => {
@@ -141,7 +142,7 @@ describe('register', () => {
 
     await $.session.start(Fixtures.SESSION)
 
-    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
+    const drawn = Fixtures.lineOf(await $.ui.render(Fixtures.BAND))
 
     expect(drawn).toContain('⚠️ Could not read Music.app')
     expect(drawn).toContain('Not authorized')
@@ -153,7 +154,7 @@ describe('register', () => {
     await $.session.start(Fixtures.SESSION)
 
     const narrow = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 50 } }
-    const drawn = Fixtures.textOf(await $.ui.render(narrow))
+    const drawn = Fixtures.lineOf(await $.ui.render(narrow))
     const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
 
     expect(bar.length).toBe(6)
@@ -168,7 +169,7 @@ describe('register', () => {
 
     for (const bodyColumns of [80, 120, 200]) {
       const band = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns } }
-      const drawn = Fixtures.textOf(await $.ui.render(band))
+      const drawn = Fixtures.lineOf(await $.ui.render(band))
       const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
 
       expect(drawn).not.toContain('…')
