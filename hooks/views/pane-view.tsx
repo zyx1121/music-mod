@@ -3,10 +3,20 @@
 /* @jsxFrag Fragment */
 import type { Elements, RenderElement } from 'claude-code'
 
-import { barOf, clockOf, type Model } from '../now-playing'
+import { barOf, clockOf, type Control, type Model } from '../now-playing'
 
 /** The tags the pane draws with. */
-export type Kit = Pick<Elements['terminal'], 'Box' | 'Text'>
+export type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
+
+/** What a press on each control runs. */
+export type Actions = Record<Control, () => void>
+
+/** The controls in drawing order, with their glyphs and hotkeys. */
+export const CONTROLS: readonly { key: Control; label: string; hotkey: string }[] = [
+  { key: 'previous', label: '⏮', hotkey: 'h' },
+  { key: 'playpause', label: '⏯', hotkey: 'k' },
+  { key: 'next', label: '⏭', hotkey: 'l' },
+]
 
 const STATE_MARK: Record<string, string> = {
   playing: '▶',
@@ -23,8 +33,18 @@ const STATE_MARK: Record<string, string> = {
  * @param columns the body columns the pane has
  * @returns the tree
  */
-export function paneView(kit: Kit, model: Model, columns: number): RenderElement {
-  const { Box, Text } = kit
+export function paneView(kit: Kit, model: Model, columns: number, actions: Actions): RenderElement {
+  const { Box, Text, Button } = kit
+
+  const controls = (
+    <Box flexDirection="row" gap={1}>
+      {CONTROLS.map(control => (
+        <Button key={control.key} plain hotkey={control.hotkey} onPress={actions[control.key]}>
+          {control.label}
+        </Button>
+      ))}
+    </Box>
+  )
 
   if (model.kind === 'idle') {
     return (
@@ -55,8 +75,9 @@ export function paneView(kit: Kit, model: Model, columns: number): RenderElement
 
   if (now.state === 'stopped' || !now.track) {
     return (
-      <Box paddingX={1}>
+      <Box paddingX={1} flexDirection="column">
         <Text dimColor>Music is open, nothing playing</Text>
+        {controls}
       </Box>
     )
   }
@@ -98,6 +119,7 @@ export function paneView(kit: Kit, model: Model, columns: number): RenderElement
           {next}
         </Text>
       ) : null}
+      {controls}
     </Box>
   )
 }

@@ -165,3 +165,22 @@ export function barOf(ratio: number, width: number): string {
 
   return `${'█'.repeat(filled)}${'░'.repeat(cells - filled)}`
 }
+
+/** The transport controls the pane offers. */
+export type Control = 'previous' | 'playpause' | 'next'
+
+const CONTROL_SCRIPT: Record<Control, string> = {
+  previous: 'tell application "Music" to previous track',
+  playpause: 'tell application "Music" to playpause',
+  next: 'tell application "Music" to next track',
+}
+
+/**
+ * The argv that sends one transport control to Music.app.
+ *
+ * @param control which control
+ * @returns the argv
+ */
+export function controlArgvOf(control: Control): readonly string[] {
+  return ['osascript', '-e', CONTROL_SCRIPT[control]]
+}
