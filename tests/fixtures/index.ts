@@ -105,7 +105,7 @@ export function world(on: On, stdout = PLAYING) {
 
 /**
  * A rendered tree's text: its strings and labels in order, one newline
- * between a column Box's children.
+ * between a column Box's children, one space between a row's.
  *
  * @param tree what `$.ui.render` resolved to
  * @returns the text
@@ -126,8 +126,11 @@ export function textOf(tree: unknown): string {
   const props: unknown = Reflect.get(tree, 'props')
   const isColumn =
     typeof props === 'object' && props ? Reflect.get(props, 'flexDirection') === 'column' : false
+  const isRow =
+    typeof props === 'object' && props ? Reflect.get(props, 'flexDirection') === 'row' : false
+  const label: unknown = typeof props === 'object' && props ? Reflect.get(props, 'label') : undefined
   const children: unknown = Reflect.get(tree, 'children') ?? []
   const parts = Array.isArray(children) ? children.map(textOf) : [textOf(children)]
 
-  return parts.join(isColumn ? '\n' : '')
+  return `${typeof label === 'string' ? label : ''}${parts.join(isColumn ? '\n' : isRow ? ' ' : '')}`
 }

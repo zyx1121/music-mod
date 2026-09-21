@@ -1,6 +1,6 @@
 import type { On, PluginOptions, Timer } from 'claude-code'
 
-import { ARGV, modelOf, READ_TIMEOUT_MS, type Model } from './now-playing'
+import { ARGV, controlArgvOf, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
 import { bandView } from './views/band-view'
 
 export const COMMAND_NAME = 'music'
@@ -34,9 +34,9 @@ type Host = {
 }
 
 /**
- * The Music band: /music toggles two lines above the prompt, a timer
- * re-reads Music.app while they show, and the band's render hook draws the
- * last reading.
+ * The Music band: /music toggles one line above the prompt, a timer re-reads
+ * Music.app while it shows, the band's render hook draws the last reading,
+ * and a press on a glyph sends its control.
  *
  * @param on the engine's hook registrar
  * @param options the plugin's userConfig values
@@ -48,6 +48,7 @@ export function register(on: On, options: PluginOptions): void {
   let timer: Timer | null = null
   let isShown = false
   let isReading = false
+  let host: Host | null = null
 
   async function read(host: Host): Promise<void> {
     if (isReading) {
@@ -69,6 +70,28 @@ export function register(on: On, options: PluginOptions): void {
     host.invalidate()
   }
 
+  async function control(which: Control): Promise<void> {
+    if (!host) {
+      return
+    }
+
+    const run = await host.run(controlArgvOf(which), { timeoutMs: READ_TIMEOUT_MS }).catch(() => null)
+
+    if (run && run.exitCode !== 0) {
+      model = { kind: 'error', text: `osascript exited ${run.exitCode}: ${run.stderr.trim()}` }
+      host.invalidate()
+
+      return
+    }
+
+    await read(host)
+  }
+
+  const actions = {
+    playpause: () => void control('playpause'),
+    next: () => void control('next'),
+  }
+
   function stop(): void {
     timer?.cancel()
     timer = null
@@ -79,7 +102,7 @@ export function register(on: On, options: PluginOptions): void {
     try {
       await $.command.register({
         name: COMMAND_NAME,
-        description: 'What Music.app is playing, two lines above the prompt',
+        description: 'What Music.app is playing, one line above the prompt',
       })
     } catch (error) {
       $.ui.log(
@@ -91,26 +114,28 @@ export function register(on: On, options: PluginOptions): void {
   })
 
   on('command.run', { command: COMMAND_NAME }, async $ => {
-    const host: Host = {
+    const engine: Host = {
       run: (argv, init) => $.process.run(argv, init),
       invalidate: () => $.ui.invalidate('ui.render'),
       every: (ms, fn) => $.clock.every(ms, fn),
     }
 
+    host = engine
+
     if (isShown) {
       stop()
-      host.invalidate()
+      engine.invalidate()
 
       return { text: HIDDEN_TEXT }
     }
 
     isShown = true
     model = { kind: 'idle' }
-    await read(host)
+    await read(engine)
 
     timer?.cancel()
-    timer = host.every(refreshMs, () => {
-      void read(host)
+    timer = engine.every(refreshMs, () => {
+      void read(engine)
     })
 
     return { text: SHOWN_TEXT }
@@ -121,9 +146,9 @@ export function register(on: On, options: PluginOptions): void {
       return next(e)
     }
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
 
-    return bandView({ Box, Text }, model, e.props.bodyColumns)
+    return bandView({ Box, Text, Button }, model, e.props.bodyColumns, actions)
   })
 
   on('session.end', ($, e, next) => {
