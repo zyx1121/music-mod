@@ -1,4 +1,4 @@
-import type { On, PluginOptions, Timer } from 'claude-code'
+import type { EngineInterface, On, PluginOptions, Timer } from 'claude-code'
 
 import { ARGV, controlArgvOf, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
 import { bandView } from './views/band-view'
@@ -9,6 +9,9 @@ export const MIN_REFRESH_MS = 500
 
 export const SHOWN_TEXT = 'Music shown above the prompt'
 export const HIDDEN_TEXT = 'Music hidden'
+
+/** The store key under which the last /music choice is kept between sessions. */
+export const STORE_SHOWN_KEY = 'shown'
 
 /**
  * The refresh interval the options ask for, floored at MIN_REFRESH_MS.
@@ -31,12 +34,47 @@ type Host = {
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>
   invalidate: () => void
   every: (ms: number, fn: () => void) => Timer
+  storeGet: (key: string) => Promise<unknown>
+  storeSet: (key: string, value: unknown) => Promise<void>
 }
 
 /**
- * The Music band: /music toggles one line above the prompt, a timer re-reads
- * Music.app while it shows, the band's render hook draws the last reading,
- * and a press on a glyph sends its control.
+ * Whether the band shows at a session's start: the last /music choice the
+ * store kept, else the `showOnStart` option (true unless set false).
+ *
+ * @param kept what the store holds under STORE_SHOWN_KEY
+ * @param options the plugin's userConfig values
+ * @returns whether to show
+ */
+export function isShownAtStart(kept: unknown, options: PluginOptions): boolean {
+  if (typeof kept === 'boolean') {
+    return kept
+  }
+
+  return options.showOnStart !== false
+}
+
+/**
+ * The engine calls the band needs, taken off `$`.
+ *
+ * @param $ the engine
+ * @returns the host
+ */
+function hostOf($: EngineInterface): Host {
+  return {
+    run: (argv, init) => $.process.run(argv, init),
+    invalidate: () => $.ui.invalidate('ui.render'),
+    every: (ms, fn) => $.clock.every(ms, fn),
+    storeGet: key => $.store.get(key),
+    storeSet: (key, value) => $.store.set(key, value),
+  }
+}
+
+/**
+ * The Music band: one line above the prompt, shown from the session's start
+ * (the last /music choice, else `showOnStart`) and toggled by /music; a
+ * timer re-reads Music.app while it shows, the band's render hook draws the
+ * last reading, and a press on a glyph sends its control.
  *
  * @param on the engine's hook registrar
  * @param options the plugin's userConfig values
@@ -98,6 +136,24 @@ export function register(on: On, options: PluginOptions): void {
     isShown = false
   }
 
+
+  async function show(engine: Host): Promise<void> {
+    host = engine
+    isShown = true
+    model = { kind: 'idle' }
+    await read(engine)
+
+    timer?.cancel()
+    timer = engine.every(refreshMs, () => {
+      void read(engine)
+    })
+  }
+
+  function hide(engine: Host): void {
+    stop()
+    engine.invalidate()
+  }
+
   on('session.start', async ($, e, next) => {
     try {
       await $.command.register({
@@ -110,35 +166,31 @@ export function register(on: On, options: PluginOptions): void {
       )
     }
 
+    if (e.isInteractive && e.surface === 'terminal') {
+      const engine = hostOf($)
+      const kept = await engine.storeGet(STORE_SHOWN_KEY).catch(() => undefined)
+
+      if (isShownAtStart(kept, options)) {
+        await show(engine)
+      }
+    }
+
     return next(e)
   })
 
   on('command.run', { command: COMMAND_NAME }, async $ => {
-    const engine: Host = {
-      run: (argv, init) => $.process.run(argv, init),
-      invalidate: () => $.ui.invalidate('ui.render'),
-      every: (ms, fn) => $.clock.every(ms, fn),
+    const engine = hostOf($)
+    const isHiding = isShown
+
+    if (isHiding) {
+      hide(engine)
+    } else {
+      await show(engine)
     }
 
-    host = engine
+    await engine.storeSet(STORE_SHOWN_KEY, !isHiding).catch(() => undefined)
 
-    if (isShown) {
-      stop()
-      engine.invalidate()
-
-      return { text: HIDDEN_TEXT }
-    }
-
-    isShown = true
-    model = { kind: 'idle' }
-    await read(engine)
-
-    timer?.cancel()
-    timer = engine.every(refreshMs, () => {
-      void read(engine)
-    })
-
-    return { text: SHOWN_TEXT }
+    return { text: isHiding ? HIDDEN_TEXT : SHOWN_TEXT }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

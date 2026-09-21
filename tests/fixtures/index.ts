@@ -77,9 +77,10 @@ export const CLOSED = JSON.stringify({
  *
  * @param on the test's `on`
  * @param stdout what each osascript run prints (mutable through `answers`)
- * @returns what was kept, and the clock
+ * @param stored what the plugin's store holds at the start (mutated by sets)
+ * @returns what was kept, the store, and the clock
  */
-export function world(on: On, stdout = PLAYING) {
+export function world(on: On, stdout = PLAYING, stored: Record<string, unknown> = {}) {
   const runs: Args<'process.run'>[] = []
   const invalidated: string[] = []
   const answers = { stdout, exitCode: 0, stderr: '' }
@@ -97,10 +98,16 @@ export function world(on: On, stdout = PLAYING) {
     return { value: undefined }
   })
   on('ui.render', { component: 'AbovePrompt' }, () => BENEATH)
+  on('store.get', ($, e) => ({ value: stored[e.key] }))
+  on('store.set', ($, e) => {
+    stored[e.key] = e.value
+
+    return { value: undefined }
+  })
 
   const clock = mock.clock(on)
 
-  return { runs, invalidated, answers, clock }
+  return { runs, invalidated, answers, stored, clock }
 }
 
 /**

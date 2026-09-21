@@ -36,11 +36,13 @@ Or try it for one session without installing:
 claude --plugin-dir /path/to/music-mod
 ```
 
-In the session:
+The line shows as soon as an interactive session starts. In the session:
 
 ```
-/music        toggle the line
+/music        hide it, or show it again
 ```
+
+Your last choice is remembered between sessions.
 
 macOS only: it reads Music.app through Apple events. The first read may ask you to allow your terminal to control Music.
 
@@ -62,19 +64,20 @@ When Music.app is closed or stopped the band says so instead. When `osascript` f
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `refreshMs` | number | `2000` | Milliseconds between reads while the band is shown. Floored at 500. |
+| `showOnStart` | boolean | `true` | Show the line as soon as an interactive session starts. Once you have used `/music`, that choice wins over this. |
 
 Set it as any plugin `userConfig` field: `/config`, or `music-mod.refreshMs` in settings.
 
 ## How it is built
 
-- `hooks/register.ts` exports `register(on, options)`. It registers `/music` on `session.start`, toggles the band on `command.run`, reads Music.app on a `$.clock.every` timer while shown, cancels it on `session.end`, and runs a glyph's AppleScript when it is pressed.
+- `hooks/register.ts` exports `register(on, options)`. On `session.start` it registers `/music` and shows the band (the last `/music` choice from `$.store`, else `showOnStart`); `command.run` toggles it and remembers; a `$.clock.every` timer reads Music.app while shown and is cancelled on `session.end`; a pressed glyph runs its AppleScript.
 - `hooks/now-playing.ts` holds the JXA script `osascript -l JavaScript` runs, the parser that turns its JSON into a `Model`, the clock and progress-bar formatters, and the one-line AppleScript behind each glyph.
 - `hooks/views/band-view.tsx` draws the `Model` with the engine's `Box`, `Text` and `Button` on `ui.render` for the `AbovePrompt` component.
 - `types/claude-code.d.ts` is the engine contract this mod is typed against, copied from [`anthropics/claude-code/mods/types`](https://github.com/anthropics/claude-code/tree/main/mods/types).
 
 ```
 bunx -p typescript tsc -p tsconfig.json          # typecheck
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 17 tests, the engine's own harness
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 19 tests, the engine's own harness
 ```
 
 The API these mods are written against may change between releases without notice. When it does, refresh `types/claude-code.d.ts` from upstream and let the typecheck point at what moved.

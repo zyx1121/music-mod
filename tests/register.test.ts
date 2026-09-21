@@ -5,19 +5,12 @@ import * as Fixtures from './fixtures'
 tier('user')
 
 describe('register', () => {
-  test('/music reads Music.app and draws one line above the prompt', async ($, on) => {
+  test('an interactive start shows the line without /music', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
 
-    expect(world.runs, 'the start reads nothing').toEqual([])
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND)), 'hidden, the band is left beneath').toBe(
-      '(beneath)',
-    )
-
-    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music shown above the prompt' })
-
-    expect(world.runs.length).toBe(1)
+    expect(world.runs.length, 'the start reads once').toBe(1)
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
 
     const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
@@ -29,11 +22,32 @@ describe('register', () => {
     expect(drawn).not.toContain('Klaxon')
   })
 
+  test('a start the person last hid stays hidden, and /music shows it and remembers', async ($, on) => {
+    const world = Fixtures.world(on, Fixtures.PLAYING, { shown: false })
+
+    await $.session.start(Fixtures.SESSION)
+
+    expect(world.runs, 'nothing read while hidden').toEqual([])
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+
+    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music shown above the prompt' })
+    expect(world.stored.shown).toBe(true)
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶️ FOREVER/)
+  })
+
+  test('a non-interactive start shows nothing', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start({ ...Fixtures.SESSION, isInteractive: false })
+
+    expect(world.runs).toEqual([])
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+  })
+
   test('pressing the state glyph toggles play/pause, then re-reads', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
     await $.ui.render(Fixtures.BAND)
 
     expect(await $.ui.press({ plugin: 'music-mod', key: 'playpause' })).toEqual({ element: 'playpause' })
@@ -51,7 +65,6 @@ describe('register', () => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
     await $.ui.render(Fixtures.BAND)
     await $.ui.press({ plugin: 'music-mod', key: 'next' })
     await world.clock.settle()
@@ -63,7 +76,6 @@ describe('register', () => {
     Fixtures.world(on, Fixtures.PAUSED)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
   })
@@ -72,7 +84,6 @@ describe('register', () => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     expect(world.runs.length).toBe(1)
 
@@ -84,13 +95,13 @@ describe('register', () => {
     expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
   })
 
-  test('a second /music hides the band and stops the timer', async ($, on) => {
+  test('/music on a shown band hides it, stops the timer and remembers', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music hidden' })
+    expect(world.stored.shown).toBe(false)
     expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     await world.clock.advance(10000)
@@ -102,7 +113,6 @@ describe('register', () => {
     Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     const survey = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, hasSurvey: true } }
 
@@ -114,7 +124,6 @@ describe('register', () => {
 
     on('session.end', ($, e) => ({ sessionId: e.sessionId }))
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
     await $.session.end({ reason: 'other', sessionId: 's1', resume: { id: 's1' } })
     await world.clock.advance(10000)
 
@@ -131,7 +140,6 @@ describe('register', () => {
     world.answers.stderr = 'execution error: Not authorized to send Apple events to Music. (-1743)'
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
 
@@ -143,7 +151,6 @@ describe('register', () => {
     Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     const narrow = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 50 } }
     const drawn = Fixtures.textOf(await $.ui.render(narrow))
@@ -158,7 +165,6 @@ describe('register', () => {
     Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
 
     for (const bodyColumns of [80, 120, 200]) {
       const band = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns } }
