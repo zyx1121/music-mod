@@ -1,0 +1,4 @@
+{
+  "description": "The Music pane: /music toggles a pane showing Music.app's now playing, read through osascript and redrawn on a timer while open",
+  "modules": ["./register.ts"]
+}

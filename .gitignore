@@ -1,0 +1,5 @@
+node_modules/
+.claude/
+bun.lock
+package.json
+.DS_Store
