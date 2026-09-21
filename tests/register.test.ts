@@ -1,4 +1,3 @@
-import type { RenderElement } from 'claude-code'
 import { describe, expect, test, tier } from 'claude-code/testing'
 
 import * as Fixtures from './fixtures'
@@ -6,30 +5,42 @@ import * as Fixtures from './fixtures'
 tier('user')
 
 describe('register', () => {
-  test('/music reads Music.app, opens the pane and says so', async ($, on) => {
+  test('/music reads Music.app and draws two lines above the prompt', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
 
     expect(world.runs, 'the start reads nothing').toEqual([])
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND)), 'hidden, the band is left beneath').toBe(
+      '(beneath)',
+    )
 
-    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music pane shown' })
+    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music shown above the prompt' })
 
     expect(world.runs.length).toBe(1)
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
-    expect(world.opened).toEqual([{ id: 'music', title: 'Music', rows: 7, holdToasts: true }])
 
-    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
+    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
+    const lines = drawn.split('\n')
 
-    expect(drawn).toContain('FOREVER')
-    expect(drawn).toContain('BABYMONSTER · FOREVER - Single')
-    expect(drawn).toContain('3:17 / 3:33')
-    expect(drawn).toContain('vol 53 · sys 44 (muted)')
-    expect(drawn).toContain('Favourite Songs 409/411')
-    expect(drawn).toContain('next Klaxon · i-dle')
+    expect(lines.length).toBe(2)
+    expect(lines[0]).toBe('🎶 FOREVER · BABYMONSTER · FOREVER - Single  📃 409/411')
+    expect(lines[1]).toMatch(/^▶ 3:17 █+░+ 3:33  🔇 53  ⏭ Klaxon · i-dle$/)
   })
 
-  test('while open, the pane re-reads on the timer and redraws', async ($, on) => {
+  test('paused, unmuted, shuffle and repeat show their marks', async ($, on) => {
+    Fixtures.world(on, Fixtures.PAUSED)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+
+    const [title, progress] = Fixtures.textOf(await $.ui.render(Fixtures.BAND)).split('\n')
+
+    expect(title).toBe('🎵 FOREVER · BABYMONSTER · FOREVER - Single  📃 409/411 🔀 🔁')
+    expect(progress).toMatch(/^⏸ 3:17 .* 3:33  🔊 53  ⏭ Klaxon · i-dle$/)
+  })
+
+  test('while shown, the band re-reads on the timer and redraws', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
@@ -42,21 +53,32 @@ describe('register', () => {
 
     expect(world.runs.length).toBe(2)
     expect(world.invalidated).toEqual(['ui.render', 'ui.render'])
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.PANE))).toContain("Music isn't running")
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
   })
 
-  test('a second /music closes the pane and stops the timer', async ($, on) => {
+  test('a second /music hides the band and stops the timer', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
     await $.command.run(Fixtures.MUSIC)
 
-    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music pane hidden' })
-    expect(world.closed.map(e => e.id)).toEqual(['music'])
+    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music hidden' })
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     await world.clock.advance(10000)
 
-    expect(world.runs.length, 'no read after the close').toBe(1)
+    expect(world.runs.length, 'no read after the hide').toBe(1)
+  })
+
+  test('a survey holding the band is yielded to', async ($, on) => {
+    Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+
+    const survey = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, hasSurvey: true } }
+
+    expect(Fixtures.textOf(await $.ui.render(survey))).toBe('(beneath)')
   })
 
   test('the session ending stops the timer too', async ($, on) => {
@@ -69,59 +91,9 @@ describe('register', () => {
     await world.clock.advance(10000)
 
     expect(world.runs.length).toBe(1)
-    expect(await $.command.run(Fixtures.MUSIC), 'the next /music opens again').toEqual({
-      text: 'Music pane shown',
+    expect(await $.command.run(Fixtures.MUSIC), 'the next /music shows again').toEqual({
+      text: 'Music shown above the prompt',
     })
-  })
-
-  test('the pane draws three transport controls', async ($, on) => {
-    Fixtures.world(on)
-
-    await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
-
-    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
-
-    expect(drawn).toContain('⏮')
-    expect(drawn).toContain('⏯')
-    expect(drawn).toContain('⏭')
-  })
-
-  test('pressing next tells Music.app so, then re-reads', async ($, on) => {
-    const world = Fixtures.world(on)
-
-    await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
-    await $.ui.render(Fixtures.PANE)
-
-    expect(await $.ui.press({ plugin: 'music-mod', key: 'next' })).toEqual({ element: 'next' })
-
-    await world.clock.settle()
-
-    expect(world.runs.map(run => run.argv.join(' '))).toEqual([
-      expect.stringContaining('osascript -l JavaScript'),
-      'osascript -e tell application "Music" to next track',
-      expect.stringContaining('osascript -l JavaScript'),
-    ])
-  })
-
-  test('pressing play/pause and previous send their own commands', async ($, on) => {
-    const world = Fixtures.world(on)
-
-    await $.session.start(Fixtures.SESSION)
-    await $.command.run(Fixtures.MUSIC)
-    await $.ui.render(Fixtures.PANE)
-    await $.ui.press({ plugin: 'music-mod', key: 'playpause' })
-    await world.clock.settle()
-    await $.ui.press({ plugin: 'music-mod', key: 'previous' })
-    await world.clock.settle()
-
-    const sent = world.runs.map(run => run.argv[2]).filter(arg => arg?.startsWith('tell'))
-
-    expect(sent).toEqual([
-      'tell application "Music" to playpause',
-      'tell application "Music" to previous track',
-    ])
   })
 
   test('a failing osascript draws the error, not a crash', async ($, on) => {
@@ -133,35 +105,25 @@ describe('register', () => {
     await $.session.start(Fixtures.SESSION)
     await $.command.run(Fixtures.MUSIC)
 
-    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
+    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
 
-    expect(drawn).toContain('Could not read Music.app')
+    expect(drawn).toContain('⚠️ Could not read Music.app')
     expect(drawn).toContain('Not authorized')
   })
 
-  test('another pane is left to its own hooks', async ($, on) => {
+  test('a narrow band keeps the clocks and shrinks the bar', async ($, on) => {
     Fixtures.world(on)
-    on('ui.render', { component: 'Pane' }, ($, e) => {
-      const { Text } = $.ui.resolve(e)
-
-      return h(Text, null, 'someone else') as RenderElement
-    })
 
     await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
 
-    expect(Fixtures.textOf(await $.ui.render({ ...Fixtures.PANE, requestId: 'diff' }))).toBe('someone else')
-  })
+    const narrow = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 50 } }
+    const progress = Fixtures.textOf(await $.ui.render(narrow)).split('\n')[1] ?? ''
+    const bar = /[█░]+/.exec(progress)?.[0] ?? ''
 
-  test('a pane the surface cannot place is closed and said so', async ($, on) => {
-    const world = Fixtures.world(on, Fixtures.PLAYING, true)
-
-    await $.session.start(Fixtures.SESSION)
-
-    expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music pane needs a wider terminal' })
-    expect(world.closed.map(e => e.id)).toEqual(['music'])
-
-    await world.clock.advance(10000)
-
-    expect(world.runs.length).toBe(1)
+    expect(bar.length).toBeLessThan(24)
+    expect(bar.length).toBeGreaterThanOrEqual(8)
+    expect(progress).toContain('3:17')
+    expect(progress).toContain('3:33')
   })
 })
