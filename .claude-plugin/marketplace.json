@@ -4,17 +4,17 @@
     "name": "zyx1121",
     "url": "https://github.com/zyx1121"
   },
-  "description": "Marketplace for the music-mod plugin: /music, what Music.app is playing, in a pane beside the transcript.",
+  "description": "Marketplace for the music-mod plugin: /music, what Music.app is playing, in two lines above the prompt.",
   "plugins": [
     {
       "name": "music-mod",
       "source": "./",
-      "description": "/music: Music.app now playing in a pane beside the transcript, with transport controls.",
+      "description": "/music: Music.app now playing in two lines above the prompt.",
       "category": "productivity",
       "tags": [
         "music",
         "macos",
-        "pane",
+        "band",
         "function-hooks"
       ]
     }

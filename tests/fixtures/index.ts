@@ -1,4 +1,4 @@
-import type { Args, CommandRunInput, On, RenderInput, ResultOf, SessionStartInput } from 'claude-code'
+import type { Args, CommandRunInput, On, RenderElement, RenderInput, SessionStartInput } from 'claude-code'
 import { mock } from 'claude-code/testing'
 
 /** An interactive terminal session in /work. */
@@ -16,21 +16,24 @@ export const MUSIC: CommandRunInput = {
   presentation: { isFullscreen: true, columns: 160 },
 }
 
-/** The Music pane docked, 60 body columns, 7 rows. */
-export const PANE: RenderInput<'Pane'> = {
-  component: 'Pane',
+/** The band above the prompt, 120 body columns, no survey. */
+export const BAND: RenderInput<'AbovePrompt'> = {
+  component: 'AbovePrompt',
   surface: 'terminal',
-  requestId: 'music',
-  viewport: { columns: 160, rows: 40 },
+  requestId: 'above-prompt',
+  viewport: { columns: 120, rows: 40 },
   props: {
-    title: 'Music',
-    isFocused: false,
-    bodyColumns: 60,
-    placement: 'dock',
-    scroll: { offset: 0, bodyRows: 7 },
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns: 120,
+    scroll: { offset: 0, bodyRows: 10 },
     view: {},
   },
 }
+
+/** What the world beneath draws in the band when the mod passes. */
+export const BENEATH: RenderElement = { type: 'Text', children: ['(beneath)'] }
 
 /** What Music.app prints mid-song. */
 export const PLAYING = JSON.stringify({
@@ -43,6 +46,15 @@ export const PLAYING = JSON.stringify({
   position: 197,
   playlist: { name: 'Favourite Songs', index: 409, count: 411 },
   next: { name: 'Klaxon', artist: 'i-dle' },
+})
+
+/** The same song paused, unmuted, shuffle and repeat on. */
+export const PAUSED = JSON.stringify({
+  ...JSON.parse(PLAYING),
+  state: 'paused',
+  system: { volume: 80, muted: false },
+  shuffle: true,
+  repeat: 'all',
 })
 
 /** What Music.app prints when it is not running. */
@@ -59,26 +71,16 @@ export const CLOSED = JSON.stringify({
 })
 
 /**
- * An open the surface left waiting undrawn, as the engine leaves an unasked
- * open on a narrow terminal.
- */
-export const LEFT_WAITING: ResultOf['ui.open'] = {
-  value: { isPlaced: false, reason: 'unasked below 144 columns' } as never,
-}
-
-/**
  * The world beneath the mod: a session that starts, a command that
- * registers, osascript answering `stdout`, panes kept as opened and closed.
+ * registers, osascript answering `stdout`, a band that draws BENEATH when
+ * the mod passes.
  *
  * @param on the test's `on`
  * @param stdout what each osascript run prints (mutable through `answers`)
- * @param isLeftWaiting whether an open is left waiting undrawn
  * @returns what was kept, and the clock
  */
-export function world(on: On, stdout = PLAYING, isLeftWaiting = false) {
+export function world(on: On, stdout = PLAYING) {
   const runs: Args<'process.run'>[] = []
-  const opened: Args<'ui.open'>[] = []
-  const closed: Args<'ui.close'>[] = []
   const invalidated: string[] = []
   const answers = { stdout, exitCode: 0, stderr: '' }
 
@@ -89,29 +91,21 @@ export function world(on: On, stdout = PLAYING, isLeftWaiting = false) {
 
     return { value: { exitCode: answers.exitCode, stdout: answers.stdout, stderr: answers.stderr } }
   })
-  on('ui.open', ($, e) => {
-    opened.push(e)
-
-    return isLeftWaiting ? LEFT_WAITING : { value: undefined }
-  })
-  on('ui.close', ($, e) => {
-    closed.push(e)
-
-    return { value: undefined }
-  })
   on('ui.invalidate', ($, e) => {
     invalidated.push(e.event)
 
     return { value: undefined }
   })
+  on('ui.render', { component: 'AbovePrompt' }, () => BENEATH)
 
   const clock = mock.clock(on)
 
-  return { runs, opened, closed, invalidated, answers, clock }
+  return { runs, invalidated, answers, clock }
 }
 
 /**
- * A rendered tree's text, its strings in order.
+ * A rendered tree's text: its strings and labels in order, one newline
+ * between a column Box's children.
  *
  * @param tree what `$.ui.render` resolved to
  * @returns the text
@@ -130,7 +124,10 @@ export function textOf(tree: unknown): string {
   }
 
   const props: unknown = Reflect.get(tree, 'props')
-  const label: unknown = typeof props === 'object' && props ? Reflect.get(props, 'label') : undefined
+  const isColumn =
+    typeof props === 'object' && props ? Reflect.get(props, 'flexDirection') === 'column' : false
+  const children: unknown = Reflect.get(tree, 'children') ?? []
+  const parts = Array.isArray(children) ? children.map(textOf) : [textOf(children)]
 
-  return `${typeof label === 'string' ? label : ''}${textOf(Reflect.get(tree, 'children') ?? [])}`
+  return parts.join(isColumn ? '\n' : '')
 }
