@@ -4,12 +4,12 @@
     "name": "zyx1121",
     "url": "https://github.com/zyx1121"
   },
-  "description": "Marketplace for the music-mod plugin: /music, what Music.app is playing, in two lines above the prompt.",
+  "description": "Marketplace for the music-mod plugin: /music, what Music.app is playing, in one line above the prompt.",
   "plugins": [
     {
       "name": "music-mod",
       "source": "./",
-      "description": "/music: Music.app now playing in two lines above the prompt.",
+      "description": "/music: Music.app now playing in one line above the prompt, play/pause and next pressable.",
       "category": "productivity",
       "tags": [
         "music",

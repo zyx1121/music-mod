@@ -1,5 +1,5 @@
 {
-  "description": "The Music band: /music toggles two lines above the prompt showing Music.app's now playing, read through osascript and redrawn on a timer while shown",
+  "description": "The Music band: /music toggles one line above the prompt showing Music.app's now playing, read through osascript and redrawn on a timer while shown; its play/pause and next glyphs are pressable",
   "modules": [
     "./register.ts"
   ]

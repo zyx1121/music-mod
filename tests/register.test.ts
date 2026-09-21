@@ -5,7 +5,7 @@ import * as Fixtures from './fixtures'
 tier('user')
 
 describe('register', () => {
-  test('/music reads Music.app and draws two lines above the prompt', async ($, on) => {
+  test('/music reads Music.app and draws one line above the prompt', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
@@ -21,23 +21,51 @@ describe('register', () => {
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
 
     const drawn = Fixtures.textOf(await $.ui.render(Fixtures.BAND))
-    const lines = drawn.split('\n')
 
-    expect(lines.length).toBe(2)
-    expect(lines[0]).toBe('🎶 FOREVER · BABYMONSTER · FOREVER - Single  📃 409/411')
-    expect(lines[1]).toMatch(/^▶ 3:17 █+░+ 3:33  🔇 53  ⏭ Klaxon · i-dle$/)
+    expect(drawn).not.toContain('\n')
+    expect(drawn).toMatch(/^▶️ FOREVER · BABYMONSTER · FOREVER - Single █+░+ 3:17 \/ 3:33 ⏭️$/)
+    expect(drawn).not.toContain('53')
+    expect(drawn).not.toContain('409')
+    expect(drawn).not.toContain('Klaxon')
   })
 
-  test('paused, unmuted, shuffle and repeat show their marks', async ($, on) => {
+  test('pressing the state glyph toggles play/pause, then re-reads', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+    await $.ui.render(Fixtures.BAND)
+
+    expect(await $.ui.press({ plugin: 'music-mod', key: 'playpause' })).toEqual({ element: 'playpause' })
+
+    await world.clock.settle()
+
+    expect(world.runs.map(run => run.argv.join(' '))).toEqual([
+      expect.stringContaining('osascript -l JavaScript'),
+      'osascript -e tell application "Music" to playpause',
+      expect.stringContaining('osascript -l JavaScript'),
+    ])
+  })
+
+  test('pressing the next glyph skips the track', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+    await $.ui.render(Fixtures.BAND)
+    await $.ui.press({ plugin: 'music-mod', key: 'next' })
+    await world.clock.settle()
+
+    expect(world.runs[1]?.argv[2]).toBe('tell application "Music" to next track')
+  })
+
+  test('paused shows the pause glyph', async ($, on) => {
     Fixtures.world(on, Fixtures.PAUSED)
 
     await $.session.start(Fixtures.SESSION)
     await $.command.run(Fixtures.MUSIC)
 
-    const [title, progress] = Fixtures.textOf(await $.ui.render(Fixtures.BAND)).split('\n')
-
-    expect(title).toBe('🎵 FOREVER · BABYMONSTER · FOREVER - Single  📃 409/411 🔀 🔁')
-    expect(progress).toMatch(/^⏸ 3:17 .* 3:33  🔊 53  ⏭ Klaxon · i-dle$/)
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
   })
 
   test('while shown, the band re-reads on the timer and redraws', async ($, on) => {
@@ -111,19 +139,19 @@ describe('register', () => {
     expect(drawn).toContain('Not authorized')
   })
 
-  test('a narrow band keeps the clocks and shrinks the bar', async ($, on) => {
+  test('a narrow band shrinks the bar and cuts the title', async ($, on) => {
     Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
     await $.command.run(Fixtures.MUSIC)
 
     const narrow = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 50 } }
-    const progress = Fixtures.textOf(await $.ui.render(narrow)).split('\n')[1] ?? ''
-    const bar = /[█░]+/.exec(progress)?.[0] ?? ''
+    const drawn = Fixtures.textOf(await $.ui.render(narrow))
+    const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
 
-    expect(bar.length).toBeLessThan(24)
-    expect(bar.length).toBeGreaterThanOrEqual(8)
-    expect(progress).toContain('3:17')
-    expect(progress).toContain('3:33')
+    expect(bar.length).toBeLessThan(20)
+    expect(bar.length).toBeGreaterThanOrEqual(6)
+    expect(drawn).toContain('…')
+    expect(drawn).toContain('3:17 / 3:33')
   })
 })
