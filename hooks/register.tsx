@@ -1,3 +1,6 @@
+/* @jsxRuntime classic */
+/* @jsx h */
+/* @jsxFrag Fragment */
 import type { EngineInterface, On, PluginOptions, Timer } from 'claude-code'
 
 import { ARGV, controlArgvOf, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
@@ -199,8 +202,14 @@ export function register(on: On, options: PluginOptions): void {
     }
 
     const { Box, Text, Button } = $.ui.resolve(e)
+    const beneath = await next(e)
 
-    return bandView({ Box, Text, Button }, model, e.props.bodyColumns, actions)
+    return (
+      <Box flexDirection="column">
+        {bandView({ Box, Text, Button }, model, e.props.bodyColumns, actions)}
+        {beneath}
+      </Box>
+    )
   })
 
   on('session.end', ($, e, next) => {

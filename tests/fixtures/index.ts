@@ -141,3 +141,14 @@ export function textOf(tree: unknown): string {
 
   return `${typeof label === 'string' ? label : ''}${parts.join(isColumn ? '\n' : isRow ? ' ' : '')}`
 }
+
+/**
+ * The mod's own line of a band render: the first line, what is beneath
+ * following on the next.
+ *
+ * @param tree what `$.ui.render` resolved to
+ * @returns the mod's line
+ */
+export function lineOf(tree: unknown): string {
+  return textOf(tree).split('\n')[0] ?? ''
+}
