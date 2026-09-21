@@ -149,9 +149,28 @@ describe('register', () => {
     const drawn = Fixtures.textOf(await $.ui.render(narrow))
     const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
 
-    expect(bar.length).toBeLessThan(20)
-    expect(bar.length).toBeGreaterThanOrEqual(6)
+    expect(bar.length).toBe(6)
     expect(drawn).toContain('…')
     expect(drawn).toContain('3:17 / 3:33')
+  })
+
+  test('the line fills the band: the bar takes what the title leaves', async ($, on) => {
+    Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+
+    for (const bodyColumns of [80, 120, 200]) {
+      const band = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns } }
+      const drawn = Fixtures.textOf(await $.ui.render(band))
+      const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
+
+      expect(drawn).not.toContain('…')
+      // 2 padding + 4 glyph cells + 4 spaces between 5 parts + title + bar + clocks,
+      // stopping 4 cells short of the engine's collapse mark
+      expect(2 + 4 + 4 + 'FOREVER · BABYMONSTER · FOREVER - Single'.length + bar.length + '3:17 / 3:33'.length).toBe(
+        bodyColumns - 4,
+      )
+    }
   })
 })
