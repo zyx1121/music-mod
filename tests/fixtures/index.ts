@@ -16,7 +16,7 @@ export const MUSIC: CommandRunInput = {
   presentation: { isFullscreen: true, columns: 160 },
 }
 
-/** The Music pane docked, 60 body columns, 6 rows. */
+/** The Music pane docked, 60 body columns, 7 rows. */
 export const PANE: RenderInput<'Pane'> = {
   component: 'Pane',
   surface: 'terminal',
@@ -27,7 +27,7 @@ export const PANE: RenderInput<'Pane'> = {
     isFocused: false,
     bodyColumns: 60,
     placement: 'dock',
-    scroll: { offset: 0, bodyRows: 6 },
+    scroll: { offset: 0, bodyRows: 7 },
     view: {},
   },
 }
@@ -129,5 +129,8 @@ export function textOf(tree: unknown): string {
     return ''
   }
 
-  return textOf(Reflect.get(tree, 'children') ?? [])
+  const props: unknown = Reflect.get(tree, 'props')
+  const label: unknown = typeof props === 'object' && props ? Reflect.get(props, 'label') : undefined
+
+  return `${typeof label === 'string' ? label : ''}${textOf(Reflect.get(tree, 'children') ?? [])}`
 }

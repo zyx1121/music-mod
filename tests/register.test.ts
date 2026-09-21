@@ -17,7 +17,7 @@ describe('register', () => {
 
     expect(world.runs.length).toBe(1)
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
-    expect(world.opened).toEqual([{ id: 'music', title: 'Music', rows: 6, holdToasts: true }])
+    expect(world.opened).toEqual([{ id: 'music', title: 'Music', rows: 7, holdToasts: true }])
 
     const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
 
@@ -72,6 +72,56 @@ describe('register', () => {
     expect(await $.command.run(Fixtures.MUSIC), 'the next /music opens again').toEqual({
       text: 'Music pane shown',
     })
+  })
+
+  test('the pane draws three transport controls', async ($, on) => {
+    Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+
+    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
+
+    expect(drawn).toContain('⏮')
+    expect(drawn).toContain('⏯')
+    expect(drawn).toContain('⏭')
+  })
+
+  test('pressing next tells Music.app so, then re-reads', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+    await $.ui.render(Fixtures.PANE)
+
+    expect(await $.ui.press({ plugin: 'music-mod', key: 'next' })).toEqual({ element: 'next' })
+
+    await world.clock.settle()
+
+    expect(world.runs.map(run => run.argv.join(' '))).toEqual([
+      expect.stringContaining('osascript -l JavaScript'),
+      'osascript -e tell application "Music" to next track',
+      expect.stringContaining('osascript -l JavaScript'),
+    ])
+  })
+
+  test('pressing play/pause and previous send their own commands', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.MUSIC)
+    await $.ui.render(Fixtures.PANE)
+    await $.ui.press({ plugin: 'music-mod', key: 'playpause' })
+    await world.clock.settle()
+    await $.ui.press({ plugin: 'music-mod', key: 'previous' })
+    await world.clock.settle()
+
+    const sent = world.runs.map(run => run.argv[2]).filter(arg => arg?.startsWith('tell'))
+
+    expect(sent).toEqual([
+      'tell application "Music" to playpause',
+      'tell application "Music" to previous track',
+    ])
   })
 
   test('a failing osascript draws the error, not a crash', async ($, on) => {

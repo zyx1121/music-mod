@@ -1,6 +1,6 @@
 import type { On, PluginOptions, Timer } from 'claude-code'
 
-import { ARGV, modelOf, READ_TIMEOUT_MS, type Model } from './now-playing'
+import { ARGV, controlArgvOf, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
 import { paneView } from './views/pane-view'
 
 export const PANE_ID = 'music'
@@ -8,7 +8,7 @@ export const PANE_TITLE = 'Music'
 export const COMMAND_NAME = 'music'
 export const DEFAULT_REFRESH_MS = 2000
 export const MIN_REFRESH_MS = 500
-export const PANE_ROWS = 6
+export const PANE_ROWS = 7
 
 export const SHOWN_TEXT = 'Music pane shown'
 export const HIDDEN_TEXT = 'Music pane hidden'
@@ -46,6 +46,7 @@ export function register(on: On, options: PluginOptions): void {
   let timer: Timer | null = null
   let isOpen = false
   let isReading = false
+  let host: Host | null = null
 
   type Host = {
     run: (argv: readonly string[], init: { timeoutMs: number }) => Promise<{ exitCode: number; stdout: string; stderr: string }>
@@ -75,6 +76,29 @@ export function register(on: On, options: PluginOptions): void {
     host.invalidate()
   }
 
+  async function control(which: Control): Promise<void> {
+    if (!host) {
+      return
+    }
+
+    const run = await host.run(controlArgvOf(which), { timeoutMs: READ_TIMEOUT_MS }).catch(() => null)
+
+    if (run && run.exitCode !== 0) {
+      model = { kind: 'error', text: `osascript exited ${run.exitCode}: ${run.stderr.trim()}` }
+      host.invalidate()
+
+      return
+    }
+
+    await read(host)
+  }
+
+  const actions = {
+    previous: () => void control('previous'),
+    playpause: () => void control('playpause'),
+    next: () => void control('next'),
+  }
+
   function stop(): void {
     timer?.cancel()
     timer = null
@@ -95,7 +119,7 @@ export function register(on: On, options: PluginOptions): void {
   })
 
   on('command.run', { command: COMMAND_NAME }, async ($) => {
-    const host: Host = {
+    const engine: Host = {
       run: (argv, init) => $.process.run(argv, init),
       invalidate: () => $.ui.invalidate('ui.render'),
       every: (ms, fn) => $.clock.every(ms, fn),
@@ -103,27 +127,29 @@ export function register(on: On, options: PluginOptions): void {
       close: pane => $.ui.close(pane),
     }
 
+    host = engine
+
     if (isOpen) {
       stop()
-      await host.close({ id: PANE_ID }).catch(() => undefined)
+      await engine.close({ id: PANE_ID }).catch(() => undefined)
 
       return { text: HIDDEN_TEXT }
     }
 
-    await read(host)
+    await read(engine)
 
-    const opened = await host.open({ id: PANE_ID, title: PANE_TITLE, rows: PANE_ROWS, holdToasts: true })
+    const opened = await engine.open({ id: PANE_ID, title: PANE_TITLE, rows: PANE_ROWS, holdToasts: true })
 
     if (isRecord(opened) && opened.isPlaced === false) {
-      await host.close({ id: PANE_ID }).catch(() => undefined)
+      await engine.close({ id: PANE_ID }).catch(() => undefined)
 
       return { text: TOO_NARROW_TEXT }
     }
 
     isOpen = true
     timer?.cancel()
-    timer = host.every(refreshMs, () => {
-      void read(host)
+    timer = engine.every(refreshMs, () => {
+      void read(engine)
     })
 
     return { text: SHOWN_TEXT }
@@ -134,9 +160,9 @@ export function register(on: On, options: PluginOptions): void {
       return next(e)
     }
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
 
-    return paneView({ Box, Text }, model, e.props.bodyColumns)
+    return paneView({ Box, Text, Button }, model, e.props.bodyColumns, actions)
   })
 
   on('ui.close', { id: PANE_ID }, ($, e, next) => {

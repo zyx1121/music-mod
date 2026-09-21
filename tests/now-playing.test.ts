@@ -1,6 +1,6 @@
 import { describe, expect, test, tier } from 'claude-code/testing'
 
-import { barOf, clockOf, modelOf } from '../hooks/now-playing'
+import { barOf, clockOf, controlArgvOf, modelOf } from '../hooks/now-playing'
 import * as Fixtures from './fixtures'
 
 tier('user')
@@ -47,6 +47,12 @@ describe('now-playing', () => {
   test('non-JSON and unknown states are errors', async () => {
     expect(modelOf({ exitCode: 0, stdout: 'nope', stderr: '' }).kind).toBe('error')
     expect(modelOf({ exitCode: 0, stdout: '{"state":"dancing"}', stderr: '' }).kind).toBe('error')
+  })
+
+  test('each control has its own AppleScript', async () => {
+    expect(controlArgvOf('next')).toEqual(['osascript', '-e', 'tell application "Music" to next track'])
+    expect(controlArgvOf('previous')[2]).toContain('previous track')
+    expect(controlArgvOf('playpause')[2]).toContain('playpause')
   })
 
   test('clocks and bars', async () => {

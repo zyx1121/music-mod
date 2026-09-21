@@ -1,7 +1,7 @@
 {
   "name": "music-mod",
-  "version": "0.1.0",
-  "description": "/music: what macOS Music.app is playing, in a pane beside the transcript. Track, artist, album, a progress bar, Music and system volume, the playlist position and the track up next, refreshed every two seconds while the pane is open.",
+  "version": "0.2.0",
+  "description": "/music: what macOS Music.app is playing, in a pane beside the transcript. Track, artist, album, a progress bar, Music and system volume, the playlist position and the track up next, refreshed every two seconds while the pane is open, with previous, play/pause and next controls.",
   "author": {
     "name": "zyx1121",
     "url": "https://github.com/zyx1121"
