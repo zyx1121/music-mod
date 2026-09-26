@@ -1,7 +1,7 @@
 {
   "name": "music-mod",
-  "version": "0.5.1",
-  "description": "/music: what macOS Music.app is playing, in one line above the prompt. A pressable play/pause glyph, track · artist · album, a progress bar with the clocks, and a pressable next-track glyph, refreshed every two seconds while shown.",
+  "version": "0.6.0",
+  "description": "/music: what macOS Music.app is playing, in one line above the prompt. A pressable play/pause glyph, track · artist · album, a progress bar with the clocks, and a pressable next-track glyph. One read of Music.app every five seconds, shared by every open session; the clock ticks in between.",
   "author": {
     "name": "zyx1121",
     "url": "https://github.com/zyx1121"
@@ -10,9 +10,9 @@
     "refreshMs": {
       "type": "number",
       "title": "Refresh interval",
-      "description": "Milliseconds between reads of Music.app while the pane is open. 2000 by default; 500 at the least.",
+      "description": "Milliseconds between reads of Music.app while the band is shown, shared by every open session. 5000 by default; 1000 at the least.",
       "required": false,
-      "default": 2000
+      "default": 5000
     },
     "showOnStart": {
       "type": "boolean",

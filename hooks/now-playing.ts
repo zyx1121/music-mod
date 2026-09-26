@@ -1,59 +1,38 @@
 /**
  * What Music.app reports, read with one `osascript -l JavaScript` run and
- * parsed from the JSON it prints.
+ * parsed from the JSON it prints: only what the band draws.
  */
 export type NowPlaying = {
   state: 'closed' | 'stopped' | 'playing' | 'paused' | 'fast forwarding' | 'rewinding'
-  system: { volume: number; muted: boolean }
-  volume: number | null
-  shuffle: boolean | null
-  repeat: string | null
   track: { name: string; artist: string; album: string; duration: number } | null
   position: number | null
-  playlist: { name: string; index: number; count: number } | null
-  next: { name: string; artist: string } | null
 }
 
-/** The pane's state: nothing read yet, a reading, or why the read failed. */
+/**
+ * The pane's state: nothing read yet, a reading taken at `readAt`
+ * (milliseconds since the epoch), or why the read failed.
+ */
 export type Model =
   | { kind: 'idle' }
-  | { kind: 'ok'; now: NowPlaying }
+  | { kind: 'ok'; now: NowPlaying; readAt: number }
   | { kind: 'error'; text: string }
 
 /**
  * The JXA script osascript runs. One IIFE whose value is the JSON text
- * (osascript prints the top-level expression's value).
+ * (osascript prints the top-level expression's value). It asks Music.app for
+ * the fewest properties the band draws: no system volume (each read of it
+ * wakes coreaudiod) and no playlist walk (`tracks.length` is slow on a
+ * long playlist).
  */
 export const SCRIPT = `(() => {
-  const sys = Application.currentApplication()
-  sys.includeStandardAdditions = true
-  const vol = sys.getVolumeSettings()
-  const out = {
-    state: 'closed',
-    system: { volume: vol.outputVolume, muted: vol.outputMuted },
-    volume: null, shuffle: null, repeat: null,
-    track: null, position: null, playlist: null, next: null,
-  }
+  const out = { state: 'closed', track: null, position: null }
   const music = Application('Music')
   if (!music.running()) return JSON.stringify(out)
   out.state = music.playerState()
-  out.volume = music.soundVolume()
-  out.shuffle = music.shuffleEnabled()
-  out.repeat = music.songRepeat()
   if (out.state === 'stopped') return JSON.stringify(out)
   const t = music.currentTrack()
   out.track = { name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration() }
   try { out.position = music.playerPosition() } catch (e) { out.position = null }
-  try {
-    const pl = music.currentPlaylist()
-    const idx = t.index()
-    const n = pl.tracks.length
-    out.playlist = { name: pl.name(), index: idx, count: n }
-    if (idx < n) {
-      const nt = pl.tracks[idx]
-      out.next = { name: nt.name(), artist: nt.artist() }
-    }
-  } catch (e) {}
   return JSON.stringify(out)
 })()`
 
@@ -81,9 +60,10 @@ function stringOr(value: unknown, fallback: string): string {
  * The reading a finished osascript run stands for.
  *
  * @param run the process result
+ * @param readAt when the run was taken, milliseconds since the epoch
  * @returns the reading, or the error the pane should show
  */
-export function modelOf(run: { exitCode: number; stdout: string; stderr: string }): Model {
+export function modelOf(run: { exitCode: number; stdout: string; stderr: string }, readAt: number): Model {
   if (run.exitCode !== 0) {
     const reason = run.stderr.trim().split('\n').at(-1) ?? ''
 
@@ -102,19 +82,13 @@ export function modelOf(run: { exitCode: number; stdout: string; stderr: string 
     return { kind: 'error', text: 'Music.app answered an unknown player state' }
   }
 
-  const system = isRecord(parsed.system) ? parsed.system : {}
   const track = isRecord(parsed.track) ? parsed.track : null
-  const playlist = isRecord(parsed.playlist) ? parsed.playlist : null
-  const next = isRecord(parsed.next) ? parsed.next : null
 
   return {
     kind: 'ok',
+    readAt,
     now: {
       state: parsed.state as NowPlaying['state'],
-      system: { volume: numberOr(system.volume, 0), muted: system.muted === true },
-      volume: typeof parsed.volume === 'number' ? parsed.volume : null,
-      shuffle: typeof parsed.shuffle === 'boolean' ? parsed.shuffle : null,
-      repeat: typeof parsed.repeat === 'string' ? parsed.repeat : null,
       track: track
         ? {
             name: stringOr(track.name, ''),
@@ -124,16 +98,47 @@ export function modelOf(run: { exitCode: number; stdout: string; stderr: string 
           }
         : null,
       position: typeof parsed.position === 'number' ? parsed.position : null,
-      playlist: playlist
-        ? {
-            name: stringOr(playlist.name, ''),
-            index: numberOr(playlist.index, 0),
-            count: numberOr(playlist.count, 0),
-          }
-        : null,
-      next: next ? { name: stringOr(next.name, ''), artist: stringOr(next.artist, '') } : null,
     },
   }
+}
+
+/**
+ * The reading as it stands at `at`: while playing, the position runs on from
+ * where it was read, so the clock ticks without asking Music.app again.
+ *
+ * @param model what was last read
+ * @param at now, milliseconds since the epoch
+ * @returns the model with the position carried forward, capped at the track's end
+ */
+export function modelAt(model: Model, at: number): Model {
+  if (model.kind !== 'ok' || model.now.state !== 'playing' || !model.now.track || model.now.position === null) {
+    return model
+  }
+
+  const elapsed = Math.max(0, at - model.readAt) / 1000
+  const { duration } = model.now.track
+  const position = model.now.position + elapsed
+
+  return { ...model, now: { ...model.now, position: duration > 0 ? Math.min(duration, position) : position } }
+}
+
+/**
+ * Whether the playing track has run out by `at`, so the next one is due.
+ *
+ * @param model what was last read
+ * @param at now, milliseconds since the epoch
+ * @returns true once the carried-forward position reaches the duration
+ */
+export function hasEnded(model: Model, at: number): boolean {
+  const shown = modelAt(model, at)
+
+  return (
+    shown.kind === 'ok' &&
+    shown.now.state === 'playing' &&
+    shown.now.track !== null &&
+    shown.now.track.duration > 0 &&
+    (shown.now.position ?? 0) >= shown.now.track.duration
+  )
 }
 
 /**
