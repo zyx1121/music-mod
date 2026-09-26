@@ -1,52 +1,71 @@
 import { describe, expect, test, tier } from 'claude-code/testing'
 
-import { barOf, clockOf, controlArgvOf, modelOf } from '../hooks/now-playing'
+import { barOf, clockOf, controlArgvOf, hasEnded, modelAt, modelOf, SCRIPT } from '../hooks/now-playing'
 import * as Fixtures from './fixtures'
 
 tier('user')
 
 describe('now-playing', () => {
   test('a playing answer parses whole', async () => {
-    const model = modelOf({ exitCode: 0, stdout: Fixtures.PLAYING, stderr: '' })
-
-    expect(model.kind).toBe('ok')
-
-    if (model.kind === 'ok') {
-      expect(model.now.track?.name).toBe('FOREVER')
-      expect(model.now.next).toEqual({ name: 'Klaxon', artist: 'i-dle' })
-      expect(model.now.system).toEqual({ volume: 44, muted: true })
-    }
-  })
-
-  test('a closed answer keeps the system volume', async () => {
-    const model = modelOf({ exitCode: 0, stdout: Fixtures.CLOSED, stderr: '' })
+    const model = modelOf({ exitCode: 0, stdout: Fixtures.PLAYING, stderr: '' }, 7)
 
     expect(model).toEqual({
       kind: 'ok',
+      readAt: 7,
       now: {
-        state: 'closed',
-        system: { volume: 44, muted: false },
-        volume: null,
-        shuffle: null,
-        repeat: null,
-        track: null,
-        position: null,
-        playlist: null,
-        next: null,
+        state: 'playing',
+        track: { name: 'FOREVER', artist: 'BABYMONSTER', album: 'FOREVER - Single', duration: 213 },
+        position: 197,
       },
     })
   })
 
+  test('a closed answer has no track', async () => {
+    expect(modelOf({ exitCode: 0, stdout: Fixtures.CLOSED, stderr: '' }, 0)).toEqual({
+      kind: 'ok',
+      readAt: 0,
+      now: { state: 'closed', track: null, position: null },
+    })
+  })
+
+  test('the script asks for no system volume and walks no playlist', async () => {
+    expect(SCRIPT).not.toContain('getVolumeSettings')
+    expect(SCRIPT).not.toContain('tracks')
+  })
+
+  test('while playing the position runs on from the read, capped at the end', async () => {
+    const model = modelOf({ exitCode: 0, stdout: Fixtures.PLAYING, stderr: '' }, 1000)
+    const at = (ms: number) => {
+      const shown = modelAt(model, ms)
+
+      return shown.kind === 'ok' ? shown.now.position : null
+    }
+
+    expect(at(1000)).toBe(197)
+    expect(at(3500)).toBe(199.5)
+    expect(at(60000)).toBe(213)
+    expect(hasEnded(model, 16000)).toBe(false)
+    expect(hasEnded(model, 17000)).toBe(true)
+  })
+
+  test('paused, the position stays where it was read', async () => {
+    const model = modelOf({ exitCode: 0, stdout: Fixtures.PAUSED, stderr: '' }, 0)
+    const shown = modelAt(model, 60000)
+
+    expect(shown.kind === 'ok' ? shown.now.position : null).toBe(197)
+    expect(hasEnded(model, 60000)).toBe(false)
+  })
+
   test('a non-zero exit carries the last stderr line', async () => {
-    expect(modelOf({ exitCode: 1, stdout: '', stderr: 'a\nb: bad' })).toEqual({
+    expect(modelOf({ exitCode: 1, stdout: '', stderr: 'a\nb: bad' }, 0)).toEqual({
       kind: 'error',
       text: 'osascript exited 1: b: bad',
     })
   })
 
   test('non-JSON and unknown states are errors', async () => {
-    expect(modelOf({ exitCode: 0, stdout: 'nope', stderr: '' }).kind).toBe('error')
-    expect(modelOf({ exitCode: 0, stdout: '{"state":"dancing"}', stderr: '' }).kind).toBe('error')
+    expect(modelOf({ exitCode: 0, stdout: 'nope', stderr: '' }, 0).kind).toBe('error')
+    expect(modelOf({ exitCode: 0, stdout: '{"state":"dancing"}', stderr: '' }, 0).kind).toBe('error')
   })
 
   test('each control has its own AppleScript', async () => {

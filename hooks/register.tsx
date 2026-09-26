@@ -3,12 +3,19 @@
 /* @jsxFrag Fragment */
 import type { EngineInterface, On, PluginOptions, Timer } from 'claude-code'
 
-import { ARGV, controlArgvOf, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
+import { ARGV, controlArgvOf, hasEnded, modelAt, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
+import { cachePathOf, entryOf, isFresh, type Entry } from './shared-read'
 import { bandView } from './views/band-view'
 
 export const COMMAND_NAME = 'music'
-export const DEFAULT_REFRESH_MS = 2000
-export const MIN_REFRESH_MS = 500
+export const DEFAULT_REFRESH_MS = 5000
+export const MIN_REFRESH_MS = 1000
+
+/** How often the band redraws its clock while playing; no read happens on a tick. */
+export const TICK_MS = 1000
+
+/** At a track's end, a reading this recent (another session's) is still taken. */
+export const END_MAX_AGE_MS = 1000
 
 export const SHOWN_TEXT = 'Music shown above the prompt'
 export const HIDDEN_TEXT = 'Music hidden'
@@ -37,6 +44,9 @@ type Host = {
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>
   invalidate: () => void
   every: (ms: number, fn: () => void) => Timer
+  now: () => Promise<number>
+  readShared: () => Promise<Entry | null>
+  writeShared: (entry: Entry) => Promise<void>
   storeGet: (key: string) => Promise<unknown>
   storeSet: (key: string, value: unknown) => Promise<void>
 }
@@ -58,16 +68,26 @@ export function isShownAtStart(kept: unknown, options: PluginOptions): boolean {
 }
 
 /**
- * The engine calls the band needs, taken off `$`.
+ * The engine calls the band needs, taken off `$`. The shared reading lives
+ * under `TMPDIR`; a file the engine cannot read or write counts as absent.
  *
  * @param $ the engine
  * @returns the host
  */
-function hostOf($: EngineInterface): Host {
+async function hostOf($: EngineInterface): Promise<Host> {
+  const path = cachePathOf(await $.env.get('TMPDIR').catch(() => undefined))
+
   return {
     run: (argv, init) => $.process.run(argv, init),
     invalidate: () => $.ui.invalidate('ui.render'),
     every: (ms, fn) => $.clock.every(ms, fn),
+    now: () => $.clock.now(),
+    readShared: () =>
+      $.fs.read(path).then(
+        text => (typeof text === 'string' ? entryOf(text) : null),
+        () => null,
+      ),
+    writeShared: entry => $.fs.write(path, JSON.stringify(entry)).catch(() => undefined),
     storeGet: key => $.store.get(key),
     storeSet: (key, value) => $.store.set(key, value),
   }
@@ -75,9 +95,11 @@ function hostOf($: EngineInterface): Host {
 
 /**
  * The Music band: one line above the prompt, shown from the session's start
- * (the last /music choice, else `showOnStart`) and toggled by /music; a
- * timer re-reads Music.app while it shows, the band's render hook draws the
- * last reading, and a press on a glyph sends its control.
+ * (the last /music choice, else `showOnStart`) and toggled by /music. While
+ * it shows, a one-second tick redraws the clock from the last reading and,
+ * once `refreshMs` has passed, takes a new one: another session's from the
+ * shared file when it is recent enough, else its own from osascript. A press
+ * on a glyph sends its control and reads at once.
  *
  * @param on the engine's hook registrar
  * @param options the plugin's userConfig values
@@ -89,9 +111,15 @@ export function register(on: On, options: PluginOptions): void {
   let timer: Timer | null = null
   let isShown = false
   let isReading = false
+  let checkedAt = 0
   let host: Host | null = null
 
-  async function read(host: Host): Promise<void> {
+  /**
+   * Takes a reading no older than `maxAgeMs`: the shared one when it is,
+   * else a new osascript run, claimed in the shared file first so the other
+   * sessions wait for it instead of running their own.
+   */
+  async function read(host: Host, maxAgeMs: number): Promise<void> {
     if (isReading) {
       return
     }
@@ -99,16 +127,44 @@ export function register(on: On, options: PluginOptions): void {
     isReading = true
 
     try {
-      const run = await host.run(ARGV, { timeoutMs: READ_TIMEOUT_MS })
+      const at = await host.now()
+      const shared = await host.readShared()
 
-      model = modelOf(run)
+      checkedAt = at
+
+      if (isFresh(shared, at, maxAgeMs)) {
+        if (shared.run && (model.kind !== 'ok' || model.readAt !== shared.readAt)) {
+          model = modelOf(shared.run, shared.readAt)
+        }
+
+        return
+      }
+
+      await host.writeShared({ readAt: at, run: null })
+
+      const run = await host.run(ARGV, { timeoutMs: READ_TIMEOUT_MS })
+      const readAt = await host.now()
+
+      model = modelOf(run, readAt)
+      await host.writeShared({ readAt, run })
     } catch (error) {
       model = { kind: 'error', text: error instanceof Error ? error.message : String(error) }
     } finally {
       isReading = false
+      host.invalidate()
     }
+  }
 
-    host.invalidate()
+  async function tick(host: Host): Promise<void> {
+    const at = await host.now()
+
+    if (hasEnded(model, at)) {
+      await read(host, END_MAX_AGE_MS)
+    } else if (at - checkedAt >= refreshMs) {
+      await read(host, refreshMs)
+    } else if (model.kind === 'ok' && model.now.state === 'playing') {
+      host.invalidate()
+    }
   }
 
   async function control(which: Control): Promise<void> {
@@ -125,7 +181,7 @@ export function register(on: On, options: PluginOptions): void {
       return
     }
 
-    await read(host)
+    await read(host, 0)
   }
 
   const actions = {
@@ -139,16 +195,15 @@ export function register(on: On, options: PluginOptions): void {
     isShown = false
   }
 
-
   async function show(engine: Host): Promise<void> {
     host = engine
     isShown = true
     model = { kind: 'idle' }
-    await read(engine)
+    await read(engine, refreshMs)
 
     timer?.cancel()
-    timer = engine.every(refreshMs, () => {
-      void read(engine)
+    timer = engine.every(TICK_MS, () => {
+      void tick(engine)
     })
   }
 
@@ -170,7 +225,7 @@ export function register(on: On, options: PluginOptions): void {
     }
 
     if (e.isInteractive && e.surface === 'terminal') {
-      const engine = hostOf($)
+      const engine = await hostOf($)
       const kept = await engine.storeGet(STORE_SHOWN_KEY).catch(() => undefined)
 
       if (isShownAtStart(kept, options)) {
@@ -182,7 +237,7 @@ export function register(on: On, options: PluginOptions): void {
   })
 
   on('command.run', { command: COMMAND_NAME }, async $ => {
-    const engine = hostOf($)
+    const engine = await hostOf($)
     const isHiding = isShown
 
     if (isHiding) {
@@ -202,11 +257,12 @@ export function register(on: On, options: PluginOptions): void {
     }
 
     const { Box, Text, Button } = $.ui.resolve(e)
+    const at = await $.clock.now()
     const beneath = await next(e)
 
     return (
       <Box flexDirection="column">
-        {bandView({ Box, Text, Button }, model, e.props.bodyColumns, actions)}
+        {bandView({ Box, Text, Button }, modelAt(model, at), e.props.bodyColumns, actions)}
         {beneath}
       </Box>
     )

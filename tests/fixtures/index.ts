@@ -38,37 +38,21 @@ export const BENEATH: RenderElement = { type: 'Text', children: ['(beneath)'] }
 /** What Music.app prints mid-song. */
 export const PLAYING = JSON.stringify({
   state: 'playing',
-  system: { volume: 44, muted: true },
-  volume: 53,
-  shuffle: false,
-  repeat: 'off',
   track: { name: 'FOREVER', artist: 'BABYMONSTER', album: 'FOREVER - Single', duration: 213 },
   position: 197,
-  playlist: { name: 'Favourite Songs', index: 409, count: 411 },
-  next: { name: 'Klaxon', artist: 'i-dle' },
 })
 
-/** The same song paused, unmuted, shuffle and repeat on. */
-export const PAUSED = JSON.stringify({
-  ...JSON.parse(PLAYING),
-  state: 'paused',
-  system: { volume: 80, muted: false },
-  shuffle: true,
-  repeat: 'all',
-})
+/** The same song paused. */
+export const PAUSED = JSON.stringify({ ...JSON.parse(PLAYING), state: 'paused' })
 
 /** What Music.app prints when it is not running. */
-export const CLOSED = JSON.stringify({
-  state: 'closed',
-  system: { volume: 44, muted: false },
-  volume: null,
-  shuffle: null,
-  repeat: null,
-  track: null,
-  position: null,
-  playlist: null,
-  next: null,
-})
+export const CLOSED = JSON.stringify({ state: 'closed', track: null, position: null })
+
+/** The temporary directory the tests' sessions see. */
+export const TMPDIR = '/tmp/t/'
+
+/** Where the shared reading lives under TMPDIR. */
+export const SHARED = '/tmp/t/music-mod/now.json'
 
 /**
  * The world beneath the mod: a session that starts, a command that
@@ -78,12 +62,13 @@ export const CLOSED = JSON.stringify({
  * @param on the test's `on`
  * @param stdout what each osascript run prints (mutable through `answers`)
  * @param stored what the plugin's store holds at the start (mutated by sets)
- * @returns what was kept, the store, and the clock
+ * @returns what was kept, the store, the shared files, and the clock
  */
 export function world(on: On, stdout = PLAYING, stored: Record<string, unknown> = {}) {
   const runs: Args<'process.run'>[] = []
   const invalidated: string[] = []
   const answers = { stdout, exitCode: 0, stderr: '' }
+  const files: Record<string, string> = {}
 
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -105,9 +90,21 @@ export function world(on: On, stdout = PLAYING, stored: Record<string, unknown> 
     return { value: undefined }
   })
 
+  on('fs.read', ($, e) => {
+    const text = files[e.path]
+
+    return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
+  })
+  on('fs.write', ($, e) => {
+    files[e.path] = e.text
+
+    return { value: undefined }
+  })
+  mock.env(on, { TMPDIR })
+
   const clock = mock.clock(on)
 
-  return { runs, invalidated, answers, stored, clock }
+  return { runs, invalidated, answers, stored, files, clock }
 }
 
 /**

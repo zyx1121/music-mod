@@ -81,19 +81,99 @@ describe('register', () => {
     expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
   })
 
-  test('while shown, the band re-reads on the timer and redraws', async ($, on) => {
+  test('while playing, the clock runs on between reads without osascript', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await world.clock.advance(2000)
+
+    expect(world.runs.length, 'ticks read nothing').toBe(1)
+    expect(world.invalidated.length, 'each tick redraws').toBe(3)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toContain('3:19 / 3:33')
+  })
+
+  test('once refreshMs has passed, the band reads again and redraws', async ($, on) => {
     const world = Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
 
+    world.answers.stdout = Fixtures.CLOSED
+    await world.clock.advance(4000)
+
     expect(world.runs.length).toBe(1)
 
-    world.answers.stdout = Fixtures.CLOSED
-    await world.clock.advance(2000)
+    await world.clock.advance(1000)
 
     expect(world.runs.length).toBe(2)
-    expect(world.invalidated).toEqual(['ui.render', 'ui.render'])
     expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
+  })
+
+  test('a read leaves its reading in the shared file', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+
+    const shared = JSON.parse(world.files[Fixtures.SHARED] ?? 'null')
+
+    expect(shared.readAt).toBe(0)
+    expect(shared.run.stdout).toBe(Fixtures.PLAYING)
+  })
+
+  test("another session's recent reading is taken instead of running osascript", async ($, on) => {
+    const world = Fixtures.world(on)
+
+    world.files[Fixtures.SHARED] = JSON.stringify({
+      readAt: 0,
+      run: { exitCode: 0, stdout: Fixtures.PAUSED, stderr: '' },
+    })
+
+    await $.session.start(Fixtures.SESSION)
+
+    expect(world.runs, 'nothing run at the start').toEqual([])
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
+
+    await world.clock.advance(4000)
+    world.files[Fixtures.SHARED] = JSON.stringify({
+      readAt: 4500,
+      run: { exitCode: 0, stdout: Fixtures.CLOSED, stderr: '' },
+    })
+    await world.clock.advance(1000)
+
+    expect(world.runs, 'the fresh shared reading is taken').toEqual([])
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
+  })
+
+  test('a read under way elsewhere is waited for, not repeated', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await world.clock.advance(4000)
+    world.files[Fixtures.SHARED] = JSON.stringify({ readAt: 4800, run: null })
+    await world.clock.advance(1000)
+
+    expect(world.runs.length).toBe(1)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND)), 'the last reading still draws').toMatch(/^▶️ FOREVER/)
+  })
+
+  test('a shared file that cannot be read falls back to osascript', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    world.files[Fixtures.SHARED] = 'not json'
+
+    await $.session.start(Fixtures.SESSION)
+
+    expect(world.runs.length).toBe(1)
+  })
+
+  test('a track run out reads the next one before refreshMs', async ($, on) => {
+    const world = Fixtures.world(on)
+
+    world.answers.stdout = JSON.stringify({ ...JSON.parse(Fixtures.PLAYING), position: 211 })
+
+    await $.session.start(Fixtures.SESSION)
+    await world.clock.advance(2000)
+
+    expect(world.runs.length, 'read at the end, 2 s in').toBe(2)
   })
 
   test('/music on a shown band hides it, stops the timer and remembers', async ($, on) => {

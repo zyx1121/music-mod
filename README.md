@@ -9,11 +9,11 @@
 ```
 ▶️ Tipsy · WANUKA · Greenhorn ████████████░░░░░░░░ 2:43 / 3:39 ⏭️
 ```
-<sub>The band directly above the prompt, in any layout. It redraws every two seconds while shown; `▶️` and `⏭️` are clickable.</sub>
+<sub>The band directly above the prompt, in any layout. Its clock ticks every second while shown; `▶️` and `⏭️` are clickable.</sub>
 
 Long sessions have a soundtrack, and reaching for Music.app to check what is on breaks the flow. This mod keeps the answer one command away, inside the terminal you are already looking at: the track, where it is, and two glyphs to pause it or skip it.
 
-It is a Claude Code **mod**: a plugin whose behaviour lives in a TypeScript hooks module, written against the same engine API as the built-in `/diff` pane. It draws into the `AbovePrompt` band, so it sits above the input whether the transcript is fullscreen or inline, and never takes a side dock. No shell hooks, no MCP server, one `osascript` call per refresh.
+It is a Claude Code **mod**: a plugin whose behaviour lives in a TypeScript hooks module, written against the same engine API as the built-in `/diff` pane. It draws into the `AbovePrompt` band, so it sits above the input whether the transcript is fullscreen or inline, and never takes a side dock. No shell hooks, no MCP server, and one `osascript` call every five seconds however many sessions are open.
 
 ## Install
 
@@ -63,21 +63,22 @@ When Music.app is closed or stopped the band says so instead. When `osascript` f
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `refreshMs` | number | `2000` | Milliseconds between reads while the band is shown. Floored at 500. |
+| `refreshMs` | number | `5000` | Milliseconds between reads of Music.app while the band is shown. Every open session shares one read per interval, and the clock ticks in between. Floored at 1000. |
 | `showOnStart` | boolean | `true` | Show the line as soon as an interactive session starts. Once you have used `/music`, that choice wins over this. |
 
 Set it as any plugin `userConfig` field: `/config`, or `music-mod.refreshMs` in settings.
 
 ## How it is built
 
-- `hooks/register.ts` exports `register(on, options)`. On `session.start` it registers `/music` and shows the band (the last `/music` choice from `$.store`, else `showOnStart`); `command.run` toggles it and remembers; a `$.clock.every` timer reads Music.app while shown and is cancelled on `session.end`; a pressed glyph runs its AppleScript.
-- `hooks/now-playing.ts` holds the JXA script `osascript -l JavaScript` runs, the parser that turns its JSON into a `Model`, the clock and progress-bar formatters, and the one-line AppleScript behind each glyph.
+- `hooks/register.ts` exports `register(on, options)`. On `session.start` it registers `/music` and shows the band (the last `/music` choice from `$.store`, else `showOnStart`); `command.run` toggles it and remembers; a one-second `$.clock.every` tick redraws the clock from the last reading and, once `refreshMs` has passed (or the track has run out), takes a new one; the timer is cancelled on `session.end`; a pressed glyph runs its AppleScript and reads at once.
+- `hooks/now-playing.ts` holds the JXA script `osascript -l JavaScript` runs, the parser that turns its JSON into a `Model`, the clock and progress-bar formatters, the position carried forward between reads, and the one-line AppleScript behind each glyph. The script asks only for what the band draws: no system volume (reading it wakes `coreaudiod`) and no playlist walk.
+- `hooks/shared-read.ts` is the reading every session shares: a small JSON file at `$TMPDIR/music-mod/now.json`. A session takes the reading there when it is recent enough, else claims the file, runs `osascript` and writes the result back, so the other sessions wait for it instead of running their own.
 - `hooks/views/band-view.tsx` draws the `Model` with the engine's `Box`, `Text` and `Button` on `ui.render` for the `AbovePrompt` component.
 - `types/claude-code.d.ts` is the engine contract this mod is typed against, copied from [`anthropics/claude-code/mods/types`](https://github.com/anthropics/claude-code/tree/main/mods/types).
 
 ```
 bunx -p typescript tsc -p tsconfig.json          # typecheck
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 19 tests, the engine's own harness
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 32 tests, the engine's own harness
 ```
 
 The API these mods are written against may change between releases without notice. When it does, refresh `types/claude-code.d.ts` from upstream and let the typecheck point at what moved.
