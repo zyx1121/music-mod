@@ -130,15 +130,24 @@ export function register(on: On, options: PluginOptions): void {
       const at = await host.now()
       const shared = await host.readShared()
 
-      checkedAt = at
-
       if (isFresh(shared, at, maxAgeMs)) {
-        if (shared.run && (model.kind !== 'ok' || model.readAt !== shared.readAt)) {
+        if (!shared.run) {
+          // another session's read is under way: look again on the next tick
+          checkedAt = Number.NEGATIVE_INFINITY
+
+          return
+        }
+
+        checkedAt = at
+
+        if (model.kind !== 'ok' || model.readAt !== shared.readAt) {
           model = modelOf(shared.run, shared.readAt)
         }
 
         return
       }
+
+      checkedAt = at
 
       await host.writeShared({ readAt: at, run: null })
 
@@ -156,11 +165,19 @@ export function register(on: On, options: PluginOptions): void {
   }
 
   async function tick(host: Host): Promise<void> {
-    const at = await host.now()
+    const at = await host.now().catch(() => null)
 
-    if (hasEnded(model, at)) {
+    if (at === null) {
+      return
+    }
+
+    // a reading that already stood at the end (the track outruns its
+    // metadata) waits for the usual refresh instead of re-reading each tick
+    const isEndDue = hasEnded(model, at) && model.kind === 'ok' && !hasEnded(model, model.readAt)
+
+    if (isEndDue) {
       await read(host, END_MAX_AGE_MS)
-    } else if (at - checkedAt >= refreshMs) {
+    } else if (at < checkedAt || at - checkedAt >= refreshMs) {
       await read(host, refreshMs)
     } else if (model.kind === 'ok' && model.now.state === 'playing') {
       host.invalidate()

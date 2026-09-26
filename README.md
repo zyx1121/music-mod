@@ -78,7 +78,7 @@ Set it as any plugin `userConfig` field: `/config`, or `music-mod.refreshMs` in 
 
 ```
 bunx -p typescript tsc -p tsconfig.json          # typecheck
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 32 tests, the engine's own harness
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 35 tests, the engine's own harness
 ```
 
 The API these mods are written against may change between releases without notice. When it does, refresh `types/claude-code.d.ts` from upstream and let the typecheck point at what moved.
