@@ -46,6 +46,8 @@ Your last choice is remembered between sessions.
 
 macOS only: it reads Music.app through Apple events. The first read may ask you to allow your terminal to control Music.
 
+Reading never launches Music.app, not even when a read lands while you quit it: the events go to the running process by its ID, and a process that has gone reads as closed. Only a click on the state glyph or `⏭️` talks to Music.app by name.
+
 ## What it shows
 
 One line, left to right:

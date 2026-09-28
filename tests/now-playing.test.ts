@@ -33,6 +33,13 @@ describe('now-playing', () => {
     expect(SCRIPT).not.toContain('tracks')
   })
 
+  test('the script sends its events to the running process by ID, never to an app by name or bundle ID', async () => {
+    expect(SCRIPT).not.toContain('Application(')
+    expect(SCRIPT).not.toContain('descriptorWithBundleIdentifier')
+    expect(SCRIPT).toContain('runningApplicationsWithBundleIdentifier')
+    expect(SCRIPT).toContain('descriptorWithProcessIdentifier')
+  })
+
   test('while playing the position runs on from the read, capped at the end', async () => {
     const model = modelOf({ exitCode: 0, stdout: Fixtures.PLAYING, stderr: '' }, 1000)
     const at = (ms: number) => {

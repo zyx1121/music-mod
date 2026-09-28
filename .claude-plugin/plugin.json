@@ -1,6 +1,6 @@
 {
   "name": "music-mod",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "/music: what macOS Music.app is playing, in one line above the prompt. A pressable play/pause glyph, track · artist · album, a progress bar with the clocks, and a pressable next-track glyph. One read of Music.app every five seconds, shared by every open session; the clock ticks in between.",
   "author": {
     "name": "zyx1121",

@@ -23,17 +23,61 @@ export type Model =
  * the fewest properties the band draws: no system volume (each read of it
  * wakes coreaudiod) and no playlist walk (`tracks.length` is slow on a
  * long playlist).
+ *
+ * It never launches Music.app. `Application('Music')` relaunches the app
+ * when a read lands while it quits, so the script finds the running process
+ * through NSRunningApplication (no Apple event) and sends each get as a raw
+ * Apple event to that process ID. An event to a process that has gone fails
+ * (-600, -609) and the read reports closed.
  */
 export const SCRIPT = `(() => {
+  ObjC.import('AppKit')
+  const D = $.NSAppleEventDescriptor
+  const code = s => ((s.charCodeAt(0) << 24) | (s.charCodeAt(1) << 16) | (s.charCodeAt(2) << 8) | s.charCodeAt(3)) >>> 0
+  const text = n => String.fromCharCode((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255)
+  const STATES = { kPSS: 'stopped', kPSP: 'playing', kPSp: 'paused', kPSF: 'fast forwarding', kPSR: 'rewinding' }
+  const GONE = [-600, -609]
+  const WHY = { '-1712': 'Music.app did not answer in time', '-1743': 'not allowed to send Apple events to Music.app' }
+  const SEND = 0x3 | 0x10 | 0x80 // wait for the reply, never interact, never reconnect
+  const DEADLINE = Date.now() + 4000 // the whole read, a second inside READ_TIMEOUT_MS
+  const MISSING = code('msng') // missing value: a typeType descriptor holding 'msng'
   const out = { state: 'closed', track: null, position: null }
-  const music = Application('Music')
-  if (!music.running()) return JSON.stringify(out)
-  out.state = music.playerState()
-  if (out.state === 'stopped') return JSON.stringify(out)
-  const t = music.currentTrack()
-  out.track = { name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration() }
-  try { out.position = music.playerPosition() } catch (e) { out.position = null }
-  return JSON.stringify(out)
+  const found = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.Music').js
+  if (found.length === 0) return JSON.stringify(out)
+  const target = D.descriptorWithProcessIdentifier(found[0].processIdentifier)
+  const property = (id, of) => {
+    const spec = D.recordDescriptor
+    spec.setDescriptorForKeyword(D.descriptorWithTypeCode(code('prop')), code('want'))
+    spec.setDescriptorForKeyword(D.descriptorWithEnumCode(code('prop')), code('form'))
+    spec.setDescriptorForKeyword(D.descriptorWithTypeCode(code(id)), code('seld'))
+    spec.setDescriptorForKeyword(of || D.nullDescriptor, code('from'))
+    return spec.coerceToDescriptorType(code('obj '))
+  }
+  const get = spec => {
+    const event = D.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(code('core'), code('getd'), target, -1, 0)
+    event.setParamDescriptorForKeyword(spec, code('----'))
+    const error = $()
+    const reply = event.sendEventWithOptionsTimeoutError(SEND, Math.max(0.1, (DEADLINE - Date.now()) / 1000), error)
+    if (reply.isNil()) throw { errorNumber: Number(error.code) }
+    const errn = reply.paramDescriptorForKeyword(code('errn'))
+    if (!errn.isNil() && errn.int32Value !== 0) throw { errorNumber: errn.int32Value }
+    return reply.paramDescriptorForKeyword(code('----'))
+  }
+  try {
+    const state = text(get(property('pPlS')).enumCodeValue)
+    out.state = STATES[state] || state
+    if (out.state === 'stopped') return JSON.stringify(out)
+    const track = property('pTrk')
+    const string = id => ObjC.unwrap(get(property(id, track)).stringValue)
+    const number = d => (d.descriptorType === code('type') && d.typeCodeValue === MISSING ? null : d.doubleValue)
+    out.track = { name: string('pnam'), artist: string('pArt'), album: string('pAlb'), duration: number(get(property('pDur', track))) }
+    try { out.position = number(get(property('pPos'))) } catch (e) { out.position = null }
+    return JSON.stringify(out)
+  } catch (e) {
+    if (e instanceof Error) throw e
+    if (GONE.includes(e.errorNumber)) return JSON.stringify({ state: 'closed', track: null, position: null })
+    throw new Error((WHY[e.errorNumber] || 'Music.app answered error') + ' (' + e.errorNumber + ')')
+  }
 })()`
 
 /** The argv that reads Music.app. */
