@@ -39,6 +39,8 @@ export const SCRIPT = `(() => {
   const GONE = [-600, -609]
   const WHY = { '-1712': 'Music.app did not answer in time', '-1743': 'not allowed to send Apple events to Music.app' }
   const SEND = 0x3 | 0x10 | 0x80 // wait for the reply, never interact, never reconnect
+  const DEADLINE = Date.now() + 4000 // the whole read, a second inside READ_TIMEOUT_MS
+  const MISSING = code('msng') // missing value: a typeType descriptor holding 'msng'
   const out = { state: 'closed', track: null, position: null }
   const found = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.Music').js
   if (found.length === 0) return JSON.stringify(out)
@@ -55,7 +57,7 @@ export const SCRIPT = `(() => {
     const event = D.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(code('core'), code('getd'), target, -1, 0)
     event.setParamDescriptorForKeyword(spec, code('----'))
     const error = $()
-    const reply = event.sendEventWithOptionsTimeoutError(SEND, 2, error)
+    const reply = event.sendEventWithOptionsTimeoutError(SEND, Math.max(0.1, (DEADLINE - Date.now()) / 1000), error)
     if (reply.isNil()) throw { errorNumber: Number(error.code) }
     const errn = reply.paramDescriptorForKeyword(code('errn'))
     if (!errn.isNil() && errn.int32Value !== 0) throw { errorNumber: errn.int32Value }
@@ -67,8 +69,9 @@ export const SCRIPT = `(() => {
     if (out.state === 'stopped') return JSON.stringify(out)
     const track = property('pTrk')
     const string = id => ObjC.unwrap(get(property(id, track)).stringValue)
-    out.track = { name: string('pnam'), artist: string('pArt'), album: string('pAlb'), duration: get(property('pDur', track)).doubleValue }
-    try { out.position = get(property('pPos')).doubleValue } catch (e) { out.position = null }
+    const number = d => (d.descriptorType === code('type') && d.typeCodeValue === MISSING ? null : d.doubleValue)
+    out.track = { name: string('pnam'), artist: string('pArt'), album: string('pAlb'), duration: number(get(property('pDur', track))) }
+    try { out.position = number(get(property('pPos'))) } catch (e) { out.position = null }
     return JSON.stringify(out)
   } catch (e) {
     if (e instanceof Error) throw e

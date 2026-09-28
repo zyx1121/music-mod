@@ -33,8 +33,9 @@ describe('now-playing', () => {
     expect(SCRIPT).not.toContain('tracks')
   })
 
-  test('the script reads the running process by its ID and never names Music.app', async () => {
-    expect(SCRIPT).not.toContain("Application('Music')")
+  test('the script sends its events to the running process by ID, never to an app by name or bundle ID', async () => {
+    expect(SCRIPT).not.toContain('Application(')
+    expect(SCRIPT).not.toContain('descriptorWithBundleIdentifier')
     expect(SCRIPT).toContain('runningApplicationsWithBundleIdentifier')
     expect(SCRIPT).toContain('descriptorWithProcessIdentifier')
   })
