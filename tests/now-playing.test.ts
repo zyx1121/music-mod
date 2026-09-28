@@ -33,6 +33,12 @@ describe('now-playing', () => {
     expect(SCRIPT).not.toContain('tracks')
   })
 
+  test('the script reads the running process by its ID and never names Music.app', async () => {
+    expect(SCRIPT).not.toContain("Application('Music')")
+    expect(SCRIPT).toContain('runningApplicationsWithBundleIdentifier')
+    expect(SCRIPT).toContain('descriptorWithProcessIdentifier')
+  })
+
   test('while playing the position runs on from the read, capped at the end', async () => {
     const model = modelOf({ exitCode: 0, stdout: Fixtures.PLAYING, stderr: '' }, 1000)
     const at = (ms: number) => {
