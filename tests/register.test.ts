@@ -105,7 +105,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs.length).toBe(2)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 music isn't running")
   })
 
   test('a read leaves its reading in the shared file', async ($, on) => {
@@ -140,7 +140,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs, 'the fresh shared reading is taken').toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 Music isn't running")
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 music isn't running")
   })
 
   test('a read under way elsewhere is waited for, not repeated', async ($, on) => {
@@ -266,7 +266,7 @@ describe('register', () => {
 
     const drawn = Fixtures.lineOf(await $.ui.render(Fixtures.BAND))
 
-    expect(drawn).toContain('⚠️ Could not read Music.app')
+    expect(drawn).toContain('⚠️ could not read Music.app')
     expect(drawn).toContain('Not authorized')
   })
 

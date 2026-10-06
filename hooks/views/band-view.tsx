@@ -109,7 +109,7 @@ export function bandView(kit: Kit, model: Model, columns: number, actions: Actio
     return (
       <Box paddingX={1}>
         <Text wrap="truncate-end">
-          <Text color="red">⚠️ Could not read Music.app</Text>
+          <Text color="red">⚠️ could not read Music.app</Text>
           <Text dimColor>  {model.text}</Text>
         </Text>
       </Box>
@@ -121,7 +121,7 @@ export function bandView(kit: Kit, model: Model, columns: number, actions: Actio
   if (now.state === 'closed') {
     return (
       <Box paddingX={1}>
-        <Text dimColor>🎵 Music isn't running</Text>
+        <Text dimColor>🎵 music isn't running</Text>
       </Box>
     )
   }
@@ -132,7 +132,7 @@ export function bandView(kit: Kit, model: Model, columns: number, actions: Actio
         <Button key="playpause" plain onPress={actions.playpause}>
           {STATE_MARK.stopped}
         </Button>
-        <Text dimColor>Music is open, nothing playing</Text>
+        <Text dimColor>music is open, nothing playing</Text>
       </Box>
     )
   }
