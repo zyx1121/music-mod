@@ -1,94 +1,105 @@
-# music-mod
+<div align="center">
 
-> `/music` for Claude Code: what Music.app is playing, in one line above the prompt, live, with play/pause and next a click away.
+<h1>music-mod</h1>
 
-`claude-code` · `mod` · `function-hooks` · `macos` · `music` · `now-playing`
+<p><strong>What Music.app plays, live in one line above the Claude Code prompt, with play, pause and next.</strong></p>
 
-[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-mod-d97757)](https://github.com/zyx1121/music-mod) &nbsp;[![CI](https://github.com/zyx1121/music-mod/actions/workflows/ci.yml/badge.svg)](https://github.com/zyx1121/music-mod/actions/workflows/ci.yml) &nbsp;[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
+[![CI](https://img.shields.io/github/actions/workflow/status/zyx1121/music-mod/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/zyx1121/music-mod/actions)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-mod-d97757?style=flat-square)](https://github.com/anthropics/claude-code/tree/main/mods)
+[![macOS](https://img.shields.io/badge/macOS-only-000000?style=flat-square&logo=apple)](hooks)
+[![License](https://img.shields.io/github/license/zyx1121/music-mod?style=flat-square)](LICENSE)
+
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+
+</div>
 
 ```
 ▶️ Tipsy · WANUKA · Greenhorn ████████████░░░░░░░░ 2:43 / 3:39 ⏭️
 ```
-<sub>The band directly above the prompt, in any layout. Its clock ticks every second while shown; `▶️` and `⏭️` are clickable.</sub>
 
-Long sessions have a soundtrack, and reaching for Music.app to check what is on breaks the flow. This mod keeps the answer one command away, inside the terminal you are already looking at: the track, where it is, and two glyphs to pause it or skip it.
+Long sessions have a soundtrack, and a switch to Music.app to see the track breaks your focus. music-mod puts the track, its progress and 2 buttons in the terminal that you already look at.
 
-It is a Claude Code **mod**: a plugin whose behaviour lives in a TypeScript hooks module, written against the same engine API as the built-in `/diff` pane. It draws into the `AbovePrompt` band, so it sits above the input whether the transcript is fullscreen or inline, and never takes a side dock. No shell hooks, no MCP server, and one `osascript` call every five seconds however many sessions are open.
+## Features
 
-## Install
+- **One line above the prompt**: the state, the track, a progress bar and the time. It works in fullscreen and inline layouts.
+- **Buttons**: click the state glyph to play or pause, and `⏭️` for the next track.
+- **Never opens Music.app**: a read goes to the running process by its ID. Only a click calls Music.app by name.
+- **One read for all sessions**: one `osascript` call every 5 seconds, for any number of open sessions. The clock updates every second.
 
-Function hooks are early access, so the engine loads a mod only with the flag on. Put it in your shell profile:
+## Quick start
 
-```
+Function hooks are in early access. Turn them on in your shell profile:
+
+```sh
 export CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
 ```
 
-Then install it as a plugin, from GitHub or from a local clone:
+Then install the mod in Claude Code:
 
 ```
 /plugin marketplace add zyx1121/music-mod
 /plugin install music-mod@music-mod
 ```
 
-Or try it for one session without installing:
+Start a new session and play a song. The line appears above the prompt. On the first read, macOS can ask you to let your terminal control Music.
 
-```
-claude --plugin-dir /path/to/music-mod
-```
+## Usage
 
-The line shows as soon as an interactive session starts. In the session:
+`/music` hides the line or shows it again. The mod remembers your choice between sessions.
 
-```
-/music        hide it, or show it again
-```
+| Part | Shows |
+|------|-------|
+| `▶️` `⏸️` `⏩` `⏪` | The player state. Click to play or pause |
+| Title | Track, artist and album, cut with an ellipsis when the line is narrow |
+| Bar | Progress in the width that the title leaves (6 cells at least), then position and duration |
+| `⏭️` | Click for the next track |
 
-Your last choice is remembered between sessions.
-
-macOS only: it reads Music.app through Apple events. The first read may ask you to allow your terminal to control Music.
-
-Reading never launches Music.app, not even when a read lands while you quit it: the events go to the running process by its ID, and a process that has gone reads as closed. Only a click on the state glyph or `⏭️` talks to Music.app by name.
-
-## What it shows
-
-One line, left to right:
-
-| Part | Content |
-|------|---------|
-| `▶️` `⏸️` `⏩` `⏪` | The player state. Click it to play or pause. |
-| Title | track · artist · album, cut with an ellipsis when the band is narrow |
-| Bar | Progress, stretched to fill whatever width the title leaves (6 cells at the least), then position / duration |
-| `⏭️` | Click it to skip to the next track. |
-
-When Music.app is closed or stopped the band says so instead. When `osascript` fails (not authorized, timed out), the band shows the reason and keeps polling. A survey that takes the band is yielded to.
+When Music.app is not running or has stopped, the line says so. When `osascript` fails, the line shows the reason and the mod tries again.
 
 ## Configuration
 
-| Field | Type | Default | What it does |
-|-------|------|---------|--------------|
-| `refreshMs` | number | `5000` | Milliseconds between reads of Music.app while the band is shown. Every open session shares one read per interval, and the clock ticks in between. Floored at 1000. |
-| `showOnStart` | boolean | `true` | Show the line as soon as an interactive session starts. Once you have used `/music`, that choice wins over this. |
+| Setting | Default | Does |
+|---------|---------|------|
+| `refreshMs` | `5000` | time between reads of Music.app, 1000 at least |
+| `showOnStart` | `true` | show the line when a session starts. `/music` wins after first use |
 
-Set it as any plugin `userConfig` field: `/config`, or `music-mod.refreshMs` in settings.
+Set them with `/config`, or as `music-mod.refreshMs` in settings.
 
-## How it is built
+## How it works
 
-- `hooks/register.ts` exports `register(on, options)`. On `session.start` it registers `/music` and shows the band (the last `/music` choice from `$.store`, else `showOnStart`); `command.run` toggles it and remembers; a one-second `$.clock.every` tick redraws the clock from the last reading and, once `refreshMs` has passed (or the track has run out), takes a new one; the timer is cancelled on `session.end`; a pressed glyph runs its AppleScript and reads at once.
-- `hooks/now-playing.ts` holds the JXA script `osascript -l JavaScript` runs, the parser that turns its JSON into a `Model`, the clock and progress-bar formatters, the position carried forward between reads, and the one-line AppleScript behind each glyph. The script asks only for what the band draws: no system volume (reading it wakes `coreaudiod`) and no playlist walk.
-- `hooks/shared-read.ts` is the reading every session shares: a small JSON file at `$TMPDIR/music-mod/now.json`. A session takes the reading there when it is recent enough, else claims the file, runs `osascript` and writes the result back, so the other sessions wait for it instead of running their own.
-- `hooks/views/band-view.tsx` draws the `Model` with the engine's `Box`, `Text` and `Button` on `ui.render` for the `AbovePrompt` component.
-- `types/claude-code.d.ts` is the engine contract this mod is typed against, copied from [`anthropics/claude-code/mods/types`](https://github.com/anthropics/claude-code/tree/main/mods/types).
+- `hooks/register.tsx` registers `/music` on `session.start` and starts a 1-second tick. The tick draws the clock from the last read and reads again after `refreshMs`.
+- `hooks/now-playing.ts` holds the JXA script for `osascript -l JavaScript` and the parser. The script asks only for what the line shows. It does not read the system volume, because that wakes `coreaudiod`.
+- `hooks/shared-read.ts` keeps the shared read in `$TMPDIR/music-mod/now.json`. While one session reads, the others wait for its result.
+- `hooks/views/band-view.tsx` draws the line with `Box`, `Text` and `Button` in the `AbovePrompt` band.
 
+## Limits
+
+- macOS only. The mod reads Music.app through Apple events.
+- Function hooks are in early access, so an engine update can change the contract.
+
+## For AI agents
+
+Facts for coding agents and LLM tools. The rules for changing the code are in [AGENTS.md](AGENTS.md).
+
+- **Summary**: Claude Code function-hooks mod that shows the Music.app track, progress and play, pause and next buttons in one line above the prompt.
+- **Type**: plugin
+- **Interfaces**: slash command `/music` (toggle), `AbovePrompt` UI line with buttons
+- **Install**: `/plugin marketplace add zyx1121/music-mod`, then `/plugin install music-mod@music-mod`
+- **Run**: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir .`
+- **Verify**: `bunx -p typescript tsc -p tsconfig.json && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .`
+- **Config**: plugin options `refreshMs`, `showOnStart`
+- **Secrets**: none
+- **Limits**: macOS. The terminal needs permission to control Music.
+
+## Development
+
+```sh
+bunx -p typescript tsc -p tsconfig.json                    # typecheck
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # the engine's test harness
 ```
-bunx -p typescript tsc -p tsconfig.json          # typecheck
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test .   # 35 tests, the engine's own harness
-```
 
-The API these mods are written against may change between releases without notice. When it does, refresh `types/claude-code.d.ts` from upstream and let the typecheck point at what moved.
-
-## Contributing
-
-Issues and PRs are welcome. Ground rules live in [CONTRIBUTING.md](https://github.com/zyx1121/.github/blob/main/CONTRIBUTING.md).
+`types/claude-code.d.ts` is the engine contract from [anthropics/claude-code/mods/types](https://github.com/anthropics/claude-code/tree/main/mods/types). When the engine changes, copy the new version and let the typecheck show what moved.
 
 ## License
 
-[MIT](LICENSE) · now playing: whatever you left on
+[MIT](LICENSE)
