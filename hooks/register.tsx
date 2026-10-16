@@ -6,6 +6,7 @@ import type { EngineInterface, On, PluginOptions, Timer } from 'claude-code'
 import { ARGV, controlArgvOf, hasEnded, modelAt, modelOf, READ_TIMEOUT_MS, type Control, type Model } from './now-playing'
 import { cachePathOf, entryOf, isFresh, type Entry } from './shared-read'
 import { bandView } from './views/band-view'
+import { rowOf } from './views/panel'
 
 export const COMMAND_NAME = 'music'
 export const DEFAULT_REFRESH_MS = 5000
@@ -277,12 +278,7 @@ export function register(on: On, options: PluginOptions): void {
     const at = await $.clock.now()
     const beneath = await next(e)
 
-    return (
-      <Box flexDirection="column">
-        {bandView({ Box, Text, Button }, modelAt(model, at), e.props.bodyColumns, actions)}
-        {beneath}
-      </Box>
-    )
+    return rowOf({ Box, Text }, bandView({ Box, Text, Button }, modelAt(model, at), e.props.bodyColumns, actions), beneath)
   })
 
   on('session.end', ($, e, next) => {

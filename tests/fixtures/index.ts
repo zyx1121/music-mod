@@ -140,12 +140,51 @@ export function textOf(tree: unknown): string {
 }
 
 /**
- * The mod's own line of a band render: the first line, what is beneath
- * following on the next.
+ * The mod's own line of a band render: the text inside its panel's border.
  *
  * @param tree what `$.ui.render` resolved to
  * @returns the mod's line
  */
 export function lineOf(tree: unknown): string {
-  return textOf(tree).split('\n')[0] ?? ''
+  const body = find(tree, node => Reflect.get(node, 'key') === 'body' || propOf(node, 'key') === 'body')
+
+  return body ? textOf(Reflect.get(body, 'children')) : ''
+}
+
+/**
+ * What the plugins beneath drew: the last child of the band's row.
+ *
+ * @param tree what `$.ui.render` resolved to
+ * @returns its text
+ */
+export function beneathOf(tree: unknown): string {
+  const children: unknown = typeof tree === 'object' && tree ? Reflect.get(tree, 'children') : undefined
+
+  return Array.isArray(children) ? textOf(children[children.length - 1]) : ''
+}
+
+function propOf(node: object, name: string): unknown {
+  const props: unknown = Reflect.get(node, 'props')
+
+  return typeof props === 'object' && props ? Reflect.get(props, name) : undefined
+}
+
+function find(tree: unknown, test: (node: object) => boolean): object | null {
+  if (Array.isArray(tree)) {
+    for (const child of tree) {
+      const hit = find(child, test)
+
+      if (hit) {
+        return hit
+      }
+    }
+
+    return null
+  }
+
+  if (typeof tree !== 'object' || !tree) {
+    return null
+  }
+
+  return test(tree) ? tree : find(Reflect.get(tree, 'children'), test)
 }
