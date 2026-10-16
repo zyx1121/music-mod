@@ -10,14 +10,14 @@ describe('register', () => {
 
     await $.session.start(Fixtures.SESSION)
 
-    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND)).split('\n')[1]).toBe('(beneath)')
+    expect(Fixtures.beneathOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     expect(world.runs.length, 'the start reads once').toBe(1)
     expect(world.runs[0]?.argv.slice(0, 3)).toEqual(['osascript', '-l', 'JavaScript'])
 
     const drawn = Fixtures.lineOf(await $.ui.render(Fixtures.BAND))
 
-    expect(drawn).toMatch(/^▶️ FOREVER · BABYMONSTER · FOREVER - Single █+░+ 3:17 \/ 3:33 ⏭️$/)
+    expect(drawn).toMatch(/^▶ FOREVER  BABYMONSTER\S* [━─]+ 3:17 \/ 3:33 ⏭$/)
     expect(drawn).not.toContain('53')
     expect(drawn).not.toContain('409')
     expect(drawn).not.toContain('Klaxon')
@@ -29,11 +29,11 @@ describe('register', () => {
     await $.session.start(Fixtures.SESSION)
 
     expect(world.runs, 'nothing read while hidden').toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music shown above the prompt' })
     expect(world.stored.shown).toBe(true)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶ FOREVER/)
   })
 
   test('a non-interactive start shows nothing', async ($, on) => {
@@ -42,7 +42,7 @@ describe('register', () => {
     await $.session.start({ ...Fixtures.SESSION, isInteractive: false })
 
     expect(world.runs).toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
   })
 
   test('pressing the state glyph toggles play/pause, then re-reads', async ($, on) => {
@@ -78,7 +78,7 @@ describe('register', () => {
 
     await $.session.start(Fixtures.SESSION)
 
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸ FOREVER/)
   })
 
   test('while playing, the clock runs on between reads without osascript', async ($, on) => {
@@ -105,7 +105,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs.length).toBe(2)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 music isn't running")
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('not running')
   })
 
   test('a read leaves its reading in the shared file', async ($, on) => {
@@ -130,7 +130,7 @@ describe('register', () => {
     await $.session.start(Fixtures.SESSION)
 
     expect(world.runs, 'nothing run at the start').toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸ FOREVER/)
 
     await world.clock.advance(4000)
     world.files[Fixtures.SHARED] = JSON.stringify({
@@ -140,7 +140,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs, 'the fresh shared reading is taken').toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe("🎵 music isn't running")
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('not running')
   })
 
   test('a read under way elsewhere is waited for, not repeated', async ($, on) => {
@@ -152,7 +152,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs.length).toBe(1)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND)), 'the last reading still draws').toMatch(/^▶️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND)), 'the last reading still draws').toMatch(/^▶ FOREVER/)
   })
 
   test("a start during another session's read picks its reading up on the next tick", async ($, on) => {
@@ -162,7 +162,7 @@ describe('register', () => {
 
     await $.session.start(Fixtures.SESSION)
 
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('🎵 Reading Music.app…')
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('reading Music.app…')
 
     world.files[Fixtures.SHARED] = JSON.stringify({
       readAt: 300,
@@ -171,7 +171,7 @@ describe('register', () => {
     await world.clock.advance(1000)
 
     expect(world.runs, 'nothing run of its own').toEqual([])
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^⏸ FOREVER/)
   })
 
   test('a claim nobody finishes goes stale and is read over', async ($, on) => {
@@ -183,7 +183,7 @@ describe('register', () => {
     await world.clock.advance(5000)
 
     expect(world.runs.length).toBe(1)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶️ FOREVER/)
+    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toMatch(/^▶ FOREVER/)
   })
 
   test('a track that outruns its duration waits for the usual refresh', async ($, on) => {
@@ -225,7 +225,7 @@ describe('register', () => {
 
     expect(await $.command.run(Fixtures.MUSIC)).toEqual({ text: 'Music hidden' })
     expect(world.stored.shown).toBe(false)
-    expect(Fixtures.lineOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.BAND))).toBe('(beneath)')
 
     await world.clock.advance(10000)
 
@@ -239,7 +239,7 @@ describe('register', () => {
 
     const survey = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, hasSurvey: true } }
 
-    expect(Fixtures.lineOf(await $.ui.render(survey))).toBe('(beneath)')
+    expect(Fixtures.textOf(await $.ui.render(survey))).toBe('(beneath)')
   })
 
   test('the session ending stops the timer too', async ($, on) => {
@@ -266,7 +266,7 @@ describe('register', () => {
 
     const drawn = Fixtures.lineOf(await $.ui.render(Fixtures.BAND))
 
-    expect(drawn).toContain('⚠️ could not read Music.app')
+    expect(drawn).toContain('could not read Music.app')
     expect(drawn).toContain('Not authorized')
   })
 
@@ -277,29 +277,31 @@ describe('register', () => {
 
     const narrow = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 50 } }
     const drawn = Fixtures.lineOf(await $.ui.render(narrow))
-    const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
+    const bar = /[━─]+/.exec(drawn)?.[0] ?? ''
 
     expect(bar.length).toBe(6)
     expect(drawn).toContain('…')
     expect(drawn).toContain('3:17 / 3:33')
   })
 
-  test('the line fills the band: the bar takes what the title leaves', async ($, on) => {
+  test('the panel takes its share of the band: the bar takes what the title leaves', async ($, on) => {
     Fixtures.world(on)
 
     await $.session.start(Fixtures.SESSION)
 
-    for (const bodyColumns of [80, 120, 200]) {
+    for (const bodyColumns of [120, 160, 200]) {
       const band = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns } }
-      const drawn = Fixtures.lineOf(await $.ui.render(band))
-      const bar = /[█░]+/.exec(drawn)?.[0] ?? ''
+      const tree = await $.ui.render(band)
+      const drawn = Fixtures.lineOf(tree)
+      const width = Math.max(36, Math.floor(bodyColumns * 0.4))
 
-      expect(drawn).not.toContain('…')
-      // 2 padding + 4 glyph cells + 4 spaces between 5 parts + title + bar + clocks,
-      // stopping 4 cells short of the engine's collapse mark
-      expect(2 + 4 + 4 + 'FOREVER · BABYMONSTER · FOREVER - Single'.length + bar.length + '3:17 / 3:33'.length).toBe(
-        bodyColumns - 4,
-      )
+      expect(Fixtures.textOf(tree)).toContain(' MUSIC ')
+      // The border and its padding take 4 of the panel's columns.
+      expect(drawn.length).toBe(width - 4)
     }
+
+    const wide = { ...Fixtures.BAND, props: { ...Fixtures.BAND.props, bodyColumns: 200 } }
+
+    expect(Fixtures.lineOf(await $.ui.render(wide))).toContain('FOREVER  BABYMONSTER / FOREVER - Single')
   })
 })

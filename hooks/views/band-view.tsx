@@ -4,6 +4,7 @@
 import type { Elements, RenderElement } from 'claude-code'
 
 import { barOf, clockOf, type Control, type Model, type NowPlaying } from '../now-playing'
+import { COLOR, FRAME_CELLS, cellsOf, lineOf, panelOf, type Seg } from './panel'
 
 /** The tags the band draws with. */
 export type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
@@ -11,33 +12,32 @@ export type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 /** What a press on each control runs. */
 export type Actions = Record<Control, () => void>
 
+/** The panel's title. */
+export const TITLE = 'MUSIC'
+
 /** The fewest cells the bar keeps; below that the title gives way. */
 export const BAR_MIN_CELLS = 6
 
+/** The share of the band a playing track's panel takes. */
+export const PLAYING_SHARE = 0.4
+
+/** The fewest columns a playing track's panel takes. */
+export const PLAYING_MIN_COLUMNS = 36
+
 /** The state glyph, a pressable play/pause. */
-export const STATE_MARK: Record<NowPlaying['state'], string> = {
-  closed: '🎵',
-  stopped: '▶️',
-  playing: '▶️',
-  paused: '⏸️',
-  'fast forwarding': '⏩',
-  rewinding: '⏪',
+export const STATE_MARK: Record<Exclude<NowPlaying['state'], 'closed'>, string> = {
+  stopped: '▶',
+  playing: '▶',
+  paused: '⏸',
+  'fast forwarding': '»',
+  rewinding: '«',
 }
 
 /** The next-track glyph. */
-export const NEXT_MARK = '⏭️'
-
-/** Cells an emoji with a variation selector takes on the terminal. */
-const GLYPH_CELLS = 2
-
-/**
- * Cells the engine draws its collapse mark (` [-]`) over at the band's right
- * edge; `bodyColumns` does not set them aside, so the line stops short of them.
- */
-export const COLLAPSE_CELLS = 4
+export const NEXT_MARK = '⏭'
 
 const WIDE =
-  /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1FAFF}]/u
+  /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1F300}-\u{1FAFF}]/u
 
 /**
  * The columns `text` takes on the terminal, a CJK or emoji character two.
@@ -85,8 +85,22 @@ export function fitOf(text: string, cells: number): string {
 }
 
 /**
- * The band's tree for one `ui.render`: one line above the prompt filling its
- * width (the bar takes what the title leaves), its two glyphs pressable.
+ * A panel sized to one line of segments.
+ *
+ * @param kit Box, Text and Button
+ * @param segs the line
+ * @param tone the border's tone
+ * @returns the tree
+ */
+function textPanelOf(kit: Kit, segs: readonly Seg[], tone: 'normal' | 'error' = 'normal'): RenderElement {
+  const width = Math.max(cellsOf(segs), TITLE.length + 2) + FRAME_CELLS
+
+  return panelOf(kit, { title: TITLE, tone, width }, lineOf(kit, segs))
+}
+
+/**
+ * The band's panel for one `ui.render`: the track, a bar that takes what the
+ * title leaves, and the two pressable glyphs.
  *
  * @param kit Box, Text and Button
  * @param model what was last read
@@ -98,68 +112,80 @@ export function bandView(kit: Kit, model: Model, columns: number, actions: Actio
   const { Box, Text, Button } = kit
 
   if (model.kind === 'idle') {
-    return (
-      <Box paddingX={1}>
-        <Text dimColor>🎵 Reading Music.app…</Text>
-      </Box>
-    )
+    return textPanelOf(kit, [{ text: 'reading Music.app…', color: COLOR.muted }])
   }
 
   if (model.kind === 'error') {
-    return (
-      <Box paddingX={1}>
-        <Text wrap="truncate-end">
-          <Text color="red">⚠️ could not read Music.app</Text>
-          <Text dimColor>  {model.text}</Text>
-        </Text>
-      </Box>
+    return panelOf(
+      kit,
+      { title: TITLE, tone: 'error', width: Math.max(PLAYING_MIN_COLUMNS, Math.floor(columns * PLAYING_SHARE)) },
+      lineOf(kit, [
+        { text: 'could not read Music.app', color: COLOR.error },
+        { text: `  ${model.text}`, color: COLOR.muted },
+      ]),
     )
   }
 
   const { now } = model
 
   if (now.state === 'closed') {
-    return (
-      <Box paddingX={1}>
-        <Text dimColor>🎵 music isn't running</Text>
-      </Box>
-    )
+    return textPanelOf(kit, [{ text: 'not running', color: COLOR.muted }])
   }
 
   if (now.state === 'stopped' || !now.track) {
-    return (
-      <Box paddingX={1} flexDirection="row" gap={1}>
+    const text = 'nothing playing'
+    const width = 1 + 1 + text.length + FRAME_CELLS
+
+    return panelOf(
+      kit,
+      { title: TITLE, width },
+      <Box flexDirection="row" gap={1}>
         <Button key="playpause" plain onPress={actions.playpause}>
           {STATE_MARK.stopped}
         </Button>
-        <Text dimColor>music is open, nothing playing</Text>
-      </Box>
+        <Text color={COLOR.muted}>{text}</Text>
+      </Box>,
     )
   }
 
   const { track } = now
   const position = now.position ?? 0
   const clocks = `${clockOf(position)} / ${clockOf(track.duration)}`
-  const title = [track.name, track.artist, track.album].filter(part => part !== '').join(' · ')
-  const fixed = 2 + GLYPH_CELLS + 1 + 1 + 1 + clocks.length + 1 + GLYPH_CELLS
-  const spare = Math.max(BAR_MIN_CELLS + 4, columns - COLLAPSE_CELLS - fixed)
+  const name = track.name
+  const rest = [track.artist, track.album].filter(part => part !== '').join(' / ')
+  const title = rest ? `${name}  ${rest}` : name
+  const width = Math.min(columns, Math.max(PLAYING_MIN_COLUMNS, Math.floor(columns * PLAYING_SHARE)))
+  // Glyph, title, bar, clocks and glyph, a space between each.
+  const fixed = 1 + 1 + 1 + 1 + clocks.length + 1 + 1
+  const spare = Math.max(BAR_MIN_CELLS + 4, width - FRAME_CELLS - fixed)
   const isWhole = widthOf(title) + BAR_MIN_CELLS <= spare
   const titleCells = isWhole ? widthOf(title) : spare - BAR_MIN_CELLS
-  const cells = spare - titleCells
-  const bar = barOf(track.duration > 0 ? position / track.duration : 0, cells)
+  const shown = fitOf(title, titleCells)
+  const shownName = [...shown].slice(0, [...name].length).join('')
+  const bar = barOf(track.duration > 0 ? position / track.duration : 0, spare - titleCells)
+  const filled = bar.replace(/░/g, '').length
 
-  return (
-    <Box paddingX={1} flexDirection="row" gap={1}>
+  return panelOf(
+    kit,
+    { title: TITLE, width },
+    <Box flexDirection="row" gap={1}>
       <Button key="playpause" plain onPress={actions.playpause}>
         {STATE_MARK[now.state]}
       </Button>
-      <Text bold>{fitOf(title, titleCells)}</Text>
       <Text>
-        {bar} <Text dimColor>{clocks}</Text>
+        <Text color={COLOR.text} bold>
+          {shownName}
+        </Text>
+        <Text color={COLOR.muted}>{shown.slice(shownName.length)}</Text>
+      </Text>
+      <Text>
+        <Text color={COLOR.title}>{'━'.repeat(filled)}</Text>
+        <Text color={COLOR.line}>{'─'.repeat(bar.length - filled)}</Text>
+        <Text color={COLOR.muted}> {clocks}</Text>
       </Text>
       <Button key="next" plain onPress={actions.next}>
         {NEXT_MARK}
       </Button>
-    </Box>
+    </Box>,
   )
 }

@@ -14,15 +14,17 @@
 </div>
 
 ```
-▶️ Tipsy · WANUKA · Greenhorn ████████████░░░░░░░░ 2:43 / 3:39 ⏭️
+╭─ MUSIC ──────────────────────────────────────────────────╮
+│ ▶ Tipsy  WANUKA / Greenhorn ━━━━━━━━━━━━──────── 2:43 / 3:39 ⏭ │
+╰──────────────────────────────────────────────────────────╯
 ```
 
 Long sessions have a soundtrack, and a switch to Music.app to see the track breaks your focus. music-mod puts the track, its progress and 2 buttons in the terminal that you already look at.
 
 ## Features
 
-- **One line above the prompt**: the state, the track, a progress bar and the time. It works in fullscreen and inline layouts.
-- **Buttons**: click the state glyph to play or pause, and `⏭️` for the next track.
+- **One panel above the prompt**: the state, the track, a progress bar and the time, in a round border titled MUSIC. It sits in one row with the today-mod and hum panels, and works in fullscreen and inline layouts.
+- **Buttons**: click the state glyph to play or pause, and `⏭` for the next track.
 - **Never opens Music.app**: a read goes to the running process by its ID. Only a click calls Music.app by name.
 - **One read for all sessions**: one `osascript` call every 5 seconds, for any number of open sessions. The clock updates every second.
 
@@ -49,10 +51,10 @@ Start a new session and play a song. The line appears above the prompt. On the f
 
 | Part | Shows |
 |------|-------|
-| `▶️` `⏸️` `⏩` `⏪` | The player state. Click to play or pause |
+| `▶` `⏸` `»` `«` | The player state. Click to play or pause |
 | Title | Track, artist and album, cut with an ellipsis when the line is narrow |
 | Bar | Progress in the width that the title leaves (6 cells at least), then position and duration |
-| `⏭️` | Click for the next track |
+| `⏭` | Click for the next track |
 
 When Music.app is not running or has stopped, the line says so. When `osascript` fails, the line shows the reason and the mod tries again.
 
